@@ -13,7 +13,8 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 import utils.inference
-from metrics import bev, distribution, pointnet, rangenet
+from metrics import bev, distribution
+from metrics.extractor import pointnet, rangenet
 
 # from LiDARGen
 EVAL_MAX_DEPTH = 63.0

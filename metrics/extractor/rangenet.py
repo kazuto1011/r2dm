@@ -13,7 +13,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-from matplotlib.colors import ListedColormap
 
 
 def _count_in_ch(inputs: list[str]):
@@ -577,6 +576,8 @@ def crf_rnn(num_classes: int, **kwargs: Any) -> CRFRNN:
 
 
 def make_semantickitti_cmap():
+    from matplotlib.colors import ListedColormap
+
     label_colors = {
         0: [0, 0, 0],
         1: [245, 150, 100],
