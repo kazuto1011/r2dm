@@ -2,11 +2,12 @@
 
 R2DM is a denoising diffusion probabilistic model (DDPM) for LiDAR range/reflectance generation based on the equirectangular representation.
 
-![samples](https://github.com/kazuto1011/r2dm-dev/assets/9032347/9deb97b0-a33b-4c85-9925-5df5bb7d7b82)
+![samples](https://github.com/kazuto1011/r2dm/assets/9032347/0947620b-fd82-4a17-a614-890d4de13554)
 
-[**LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models**](https://arxiv.org/abs/2309.09256)<br>
+**LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models**<br>
 [Kazuto Nakashima](https://kazuto1011.github.io), Ryo Kurazume<br>
-arXiv 2023
+arXiv:2309.09256, 2023<br>
+[project]() | [paper](https://arxiv.org/abs/2309.09256) | [online demo](https://huggingface.co/spaces/kazuto1011/r2dm)
 
 **Quick demo:**
 
@@ -25,6 +26,7 @@ output = ddpm.sample(batch_size=1, num_steps=256)  # (B, 2, H, W)
 output = lidar_utils.denormalize(output.clamp(-1, 1))
 range_image = lidar_utils.revert_depth(output[:, [0]])
 reflectance_image = output[:, [1]]
+point_clouds = lidar_utils.to_xyz(range_image)
 ```
 
 ## Setup
@@ -92,7 +94,7 @@ The generated samples are saved in `$OUTPUT_DIR`.
 python completion_demo.py --ckpt $CHECKPOINT_PATH
 ```
 
-![completion_T-0032_r-0016_j-0001](https://github.com/kazuto1011/r2dm-dev/assets/9032347/0ac5f257-9e8d-4c20-a3ab-967f5e5b7afb)
+![completion](https://github.com/kazuto1011/r2dm/assets/9032347/f2b89329-c43f-4cd9-b0ff-210184c01632)
 
 ## Citation
 
