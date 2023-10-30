@@ -2,7 +2,7 @@
 
 R2DM is a denoising diffusion probabilistic model (DDPM) for LiDAR range/reflectance generation based on the equirectangular representation.
 
-![samples](https://github.com/kazuto1011/r2dm/assets/9032347/0947620b-fd82-4a17-a614-890d4de13554)
+![sampled in 256 steps](https://github.com/kazuto1011/r2dm/assets/9032347/0947620b-fd82-4a17-a614-890d4de13554)
 
 **LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models**<br>
 [Kazuto Nakashima](https://kazuto1011.github.io), Ryo Kurazume<br>
@@ -60,7 +60,7 @@ To start training DDPMs:
 accelerate launch train.py
 ```
 
-- The initial run takes about an hour to preprocess & cache the whole dataset.
+- The initial run takes about 15 min to preprocess & cache the whole dataset.
 - The default configuration is `config H` (R2DM) in our paper.
 - Distributed training and mixed precision are enabled by default.
 - Run with `--help` to list the available options.
