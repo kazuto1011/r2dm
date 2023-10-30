@@ -131,7 +131,7 @@ class Block(nn.Module):
         self.downsample = (
             nn.Sequential(
                 ops.Conv2d(in_channels, out_channels, 3, 1, 1, ring=ring),
-                ops.Resample(down=down, ring=True),
+                ops.Resample(down=down, ring=ring),
             )
             if down > 1
             else nn.Identity()
@@ -167,7 +167,7 @@ class Block(nn.Module):
         # upsampling
         self.upsample = (
             nn.Sequential(
-                ops.Resample(up=up, ring=True),
+                ops.Resample(up=up, ring=ring),
                 ops.Conv2d(out_channels, out_channels, 3, 1, 1, ring=ring),
             )
             if up > 1
