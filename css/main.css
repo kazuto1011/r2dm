@@ -1,0 +1,110 @@
+body {
+  font-family: "Titillium Web", sans-serif;
+  color: #333333;
+  text-align: justify;
+}
+
+img {
+  width: 100%;
+  image-rendering: pixelated;
+}
+
+video {
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+}
+
+a {
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.caption {
+  color: #999999;
+}
+
+.container {
+  max-width: 1000px;
+}
+
+.header {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.title {
+  margin-top: 1em;
+  font-weight: bold;
+}
+
+.authors {
+  margin-top: 1em;
+}
+
+.affiliations {
+  margin-top: 0.5em;
+}
+
+.conference {
+  margin-top: 0.5em;
+}
+
+.materials {
+  margin-top: 0.5em;
+  font-size: 3rem;
+}
+
+.teaser {
+  margin-top: 2em;
+  text-align: center;
+}
+
+.teaser img {
+  max-width: 95%;
+}
+
+.content {
+  margin-top: 2em;
+}
+
+.center {
+  text-align: center;
+}
+
+pre.bibtex {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border-color: #888888;
+  background: #eeeeee;
+}
+
+figure {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 0.2rem 0;
+}
+
+figcaption {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 14;
+  color: #fff;
+  display: inline-block;
+  padding: 0.2rem 0.8rem 0.2rem 0.8rem;
+}
+
+.arrow-bottom {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-bottom: 0.2rem;
+  border-bottom: 0.3rem solid #333333;
+  border-right: 0.3rem solid #333333;
+  transform: rotate(45deg);
+}
