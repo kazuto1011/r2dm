@@ -5,9 +5,9 @@ R2DM is a denoising diffusion probabilistic model (DDPM) for LiDAR range/reflect
 ![sampled in 256 steps](https://github.com/kazuto1011/r2dm/assets/9032347/0947620b-fd82-4a17-a614-890d4de13554)
 
 **LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models**<br>
-[Kazuto Nakashima](https://kazuto1011.github.io), Ryo Kurazume<br>
-arXiv:2309.09256, 2023<br>
-[project]() | [paper](https://arxiv.org/abs/2309.09256) | [online demo](https://huggingface.co/spaces/kazuto1011/r2dm)
+[Kazuto Nakashima](https://kazuto1011.github.io), [Ryo Kurazume](https://robotics.ait.kyushu-u.ac.jp/kurazume/en/)<br>
+ICRA 2024<br>
+[project](https://kazuto1011.github.io/r2dm) | [arxiv](https://arxiv.org/abs/2309.09256) | [online demo](https://huggingface.co/spaces/kazuto1011/r2dm)
 
 **Quick demo:**
 
@@ -47,7 +47,7 @@ If you are stuck with an endless installation, [try `libmamba` for the conda sol
 For training & evaluation, please download the [KITTI-360 dataset](http://www.cvlibs.net/datasets/kitti-360/) (163 GB) and make a symlink:
 
 ```sh
-ln -sf $PATH_TO_KITTI360_ROOT data/kitti360/dataset
+ln -sf $PATH_TO_KITTI360_ROOT data/kitti_360/dataset
 ```
 
 Please set the environment variable `$HF_DATASETS_CACHE` to cache the processed dataset (default: `~/.cache/huggingface/datasets`).
@@ -101,11 +101,11 @@ python completion_demo.py --ckpt $CHECKPOINT_PATH
 If you find this code useful for your research, please cite our paper:
 
 ```bibtex
-@misc{nakashima2023lidar,
-	title  = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
-	author = {Kazuto Nakashima and Ryo Kurazume},
-	year   = 2023,
-	eprint = {arXiv:2309.09256}
+@article{nakashima2023lidar,
+	title   = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
+	author  = {Kazuto Nakashima and Ryo Kurazume},
+	year    = 2023,
+	journal = {arXiv:2309.09256}
 }
 ```
 
