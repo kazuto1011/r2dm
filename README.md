@@ -16,11 +16,11 @@ pip install torch torchvision numpy einops tqdm
 ```
 
 ```py
-import torch.hub
+import torch
 
 # sampling
-ddpm, lidar_utils, _ = torch.hub.load("kazuto1011/r2dm", "pretrained_r2dm")
-output = ddpm.sample(batch_size=1, num_steps=256)  # (B, 2, H, W)
+ddpm, lidar_utils, _ = torch.hub.load("kazuto1011/r2dm", "pretrained_r2dm", device="cuda")
+output = ddpm.sample(batch_size=1, num_steps=256)  # (B,2,H,W)
 
 # postprocessing
 output = lidar_utils.denormalize(output.clamp(-1, 1))
@@ -102,10 +102,10 @@ If you find this code useful for your research, please cite our paper:
 
 ```bibtex
 @article{nakashima2023lidar,
-	title   = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
-	author  = {Kazuto Nakashima and Ryo Kurazume},
-	year    = 2023,
-	journal = {arXiv:2309.09256}
+    title   = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
+    author  = {Kazuto Nakashima and Ryo Kurazume},
+    year    = 2023,
+    journal = {arXiv:2309.09256}
 }
 ```
 
