@@ -11,7 +11,7 @@ import torch.nn.functional as F
 
 import utils.inference
 import utils.render
-from metrics import rangenet
+from metrics.extractor import rangenet
 
 
 def main(args):
@@ -55,6 +55,7 @@ def main(args):
         path=f"data/{cfg.dataset}",
         name=cfg.lidar_projection,
         split=ds.Split.TEST,
+        trust_remote_code=True,
     ).with_format("torch")
 
     if args.sample_id == -1:

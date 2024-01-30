@@ -154,6 +154,7 @@ def train(cfg):
         name=cfg.lidar_projection,
         split=ds.Split.TRAIN,
         num_proc=cfg.num_workers,
+        trust_remote_code=True,
     ).with_format("torch")
 
     if accelerator.is_main_process:

@@ -42,7 +42,7 @@ class SelfAttentionBlock(nn.Module):
         B, C, H, W = x.shape
         h = self.norm(x)
         h = h.reshape(B, C, H * W).permute(0, 2, 1)
-        h, _ = self.attn(query=h, key=h, value=h)
+        h, _ = self.attn(query=h, key=h, value=h, need_weights=False)
         h = h.reshape(B, H, W, C).permute(0, 3, 1, 2)
         return h
 
