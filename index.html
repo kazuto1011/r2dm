@@ -6,10 +6,15 @@
     <title>LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models</title>
 
     <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
       rel="stylesheet"
-      integrity="sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi"
+      integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM"
       crossorigin="anonymous" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
+      crossorigin="anonymous"></script>
+
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css"
@@ -56,8 +61,7 @@
     <div class="container header">
       <h5>
         <a href="../dusty-gan" target="_blank" rel="noopener">DUSty (2021)</a>
-        → <a href="../dusty-gan-v2" target="_blank" rel="noopener">DUSty v2 (2023)</a>
-        → R2DM (2023)
+        → <a href="../dusty-gan-v2" target="_blank" rel="noopener">DUSty v2 (2023)</a> → R2DM (2024)
       </h5>
     </div>
 
@@ -69,7 +73,7 @@
         <a href="https://robotics.ait.kyushu-u.ac.jp/kurazume/en/" target="_blank" rel="noopener"> Ryo Kurazume</a>
       </h5>
       <h5 class="affiliations">Kyushu University</h5>
-      <h5 class="conference">arXiv preprint 2023</h5>
+      <h5 class="conference">ICRA 2024</h5>
       <div class="materials">
         <a href="https://arxiv.org/abs/2309.09256" class="btn btn-primary"><i class="fa-solid fa-file-pdf"></i> Paper</a>
         <a href="https://github.com/kazuto1011/r2dm" class="btn btn-primary"><i class="fa-brands fa-github"></i> Code</a>
@@ -78,39 +82,66 @@
     </div>
 
     <div class="container content">
-      <figure>
-        <img
-          src="https://github.com/kazuto1011/r2dm/assets/9032347/0947620b-fd82-4a17-a614-890d4de13554"
-          style="width: 512; object-fit: cover; object-position: center 100%" />
-        <figcaption>Unconditional generation of LiDAR range & reflectance images</figcaption>
-      </figure>
+      <h5 style="text-align: center">TL;DR: A diffusion model for LiDAR data generation, named <b>R2DM</b></h5>
+      <video autoplay muted loop playsinline>
+        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/8810d656-c89e-48ea-84a1-e2bada25c408" type="video/mp4" />
+      </video>
     </div>
 
     <div class="container content">
       <h2>Abstract</h2>
-      <b>TLDR: A diffusion model for LiDAR range & reflectance image generation, named R2DM</b>
-      <p>
+      <p style="text-align: justify">
         Generative modeling of 3D LiDAR data is an emerging task with promising applications for autonomous mobile robots, such as scalable
-        simulation, scene manipulation, and sparse-to-dense completion of LiDAR point clouds. Existing approaches have shown the feasibility of
-        image-based LiDAR data generation using deep generative models while still struggling with the fidelity of generated data and training
-        instability. In this work, we present R2DM, a novel generative model for LiDAR data that can generate diverse and high-fidelity 3D scene point
-        clouds based on the image representation of range and reflectance intensity. Our method is based on the denoising diffusion probabilistic
-        models (DDPMs), which have demonstrated impressive results among generative model frameworks and have been significantly progressing in recent
-        years. To effectively train DDPMs on the LiDAR domain, we first conduct an in-depth analysis regarding data representation, training
-        objective, and spatial inductive bias. Based on our designed model R2DM, we also introduce a flexible LiDAR completion pipeline using the
-        powerful properties of DDPMs. We demonstrate that our method outperforms the baselines on the generation task of KITTI-360 and KITTI-Raw
-        datasets and the upsampling task of KITTI-360 dataset.
+        simulation, scene manipulation, and sparse-to-dense completion of LiDAR point clouds. While existing approaches have demonstrated the
+        feasibility of image-based LiDAR data generation using deep generative models, they still struggle with fidelity and training stability. In
+        this work, we present R2DM, a novel generative model for LiDAR data that can generate diverse and high-fidelity 3D scene point clouds based on
+        the image representation of range and reflectance intensity. Our method is built upon denoising diffusion probabilistic models (DDPMs), which
+        have shown impressive results among generative model frameworks in recent years. To effectively train DDPMs in the LiDAR domain, we first
+        conduct an in-depth analysis of data representation, loss functions, and spatial inductive biases. Leveraging our R2DM model, we also
+        introduce a flexible LiDAR completion pipeline based on the powerful capabilities of DDPMs. We demonstrate that our method surpasses existing
+        methods in generating tasks on the KITTI-360 and KITTI-Raw datasets, as well as in the completion task on the KITTI-360 dataset.
       </p>
     </div>
 
     <div class="container content">
+      <h2>Overview Video</h2>
+      <video playsinline controls style="border-radius: 15px">
+        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/080742c1-7828-4ea5-b635-92a718f78c33" type="video/mp4" />
+      </video>
+    </div>
+
+    <div class="container content">
+      <h2>Approach</h2>
+      We cast our task as 360° image generation and trained LiDAR range & reflectance images with our modified DDPM.
+      <video autoplay muted loop playsinline>
+        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/4150262a-3770-41b9-8d92-bb272d196310" type="video/mp4" />
+      </video>
+    </div>
+
+    <div class="container content">
+      <h2>Generation</h2>
+      R2DM can generate diverse and high-fidelity 3D scene point clouds based on the image representation.
+      <video autoplay muted loop playsinline>
+        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/cd29db85-2196-4bf2-8fb6-a728d8b5baca" type="video/mp4" />
+      </video>
+    </div>
+
+    <div class="container content">More demos will be added soon!</div>
+    <!--
+    <div class="container content">
+      <h2>Completion</h2>
+      By using the resampling techniques, R2DM can be used for sparse-to-dense completion of LiDAR point clouds.
+    </div>
+    -->
+
+    <div class="container content">
       <h2>Citation</h2>
-      <pre class="bibtex">
-<code>@misc{nakashima2023lidar,
-    title  = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
-    author = {Kazuto Nakashima and Ryo Kurazume},
-    year   = 2023,
-    eprint = {arXiv:2309.09256}
+      <pre class="bibtex" style="text-align: left">
+<code>@article{nakashima2023lidar,
+    title   = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
+    author  = {Kazuto Nakashima and Ryo Kurazume},
+    year    = 2023,
+    journal = {arXiv:2309.09256}
 }</code></pre>
     </div>
 
