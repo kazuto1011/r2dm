@@ -95,7 +95,7 @@ class SphericalHarmonics(nn.Module):
         self.levels = levels
         self.extra_ch = levels**2
 
-    def forward(self, coords):
+    def forward(self, coords: torch.Tensor) -> torch.Tensor:
         B, _, H, W = coords.shape
         coords = coords.repeat_interleave(B, dim=0)
         phi, theta = coords[:, 0], coords[:, 1]
@@ -138,7 +138,7 @@ class FourierFeatures(nn.Module):
         self.register_buffer("phase", phase)
         self.extra_ch = int(len(freqs_h) * 2)
 
-    def forward(self, coords):
+    def forward(self, coords: torch.Tensor) -> torch.Tensor:
         B, _, H, W = coords.shape
         coords = coords.repeat_interleave(B, dim=0)
         coords = F.conv2d(coords, weight=self.freqs, bias=self.phase)

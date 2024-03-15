@@ -19,7 +19,7 @@ class STN3d(nn.Module):
         self.bn4 = nn.BatchNorm1d(512)
         self.bn5 = nn.BatchNorm1d(256)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
@@ -43,7 +43,7 @@ class PointNetfeat(nn.Module):
         self.bn3 = nn.BatchNorm1d(1024)
         self.global_feat = global_feat
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         trans = self.stn(x)
         x = x.transpose(2, 1)
         x = torch.bmm(x, trans)
@@ -71,7 +71,7 @@ class PointNet1(nn.Module):
         self.bn1 = nn.BatchNorm1d(512)
         self.bn2 = nn.BatchNorm1d(256)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x1, trans = self.feat(x)
         x2 = F.relu(self.bn1(self.fc1(x1)))
         x3 = F.relu(self.bn2(self.fc2(x2)))
@@ -80,7 +80,9 @@ class PointNet1(nn.Module):
         return feature
 
 
-def pretrained_pointnet(dataset="shapenet", device="cpu", compile=True):
+def pretrained_pointnet(
+    dataset: str = "shapenet", device: torch.device = "cpu", compile: bool = True
+) -> nn.Module:
     if dataset == "shapenet":
         model = PointNet1(k=16)
         state_dict = load_state_dict_from_url(

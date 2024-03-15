@@ -13,12 +13,12 @@ class GaussianDiffusion(nn.Module):
 
     def __init__(
         self,
-        denoiser: nn.Module,
+        model: nn.Module,
         sampling: Literal["ddpm", "ddim"] = "ddpm",
-        criterion: Literal["l2", "l1", "huber"] | nn.Module = "l2",
+        prediction_type: Literal["eps", "v", "x_0"] = "eps",
+        loss_type: Literal["l2", "l1", "huber"] | nn.Module = "l2",
         num_training_steps: int = 1000,
-        objective: Literal["eps", "v", "x0"] = "eps",
-        beta_schedule: Literal["linear", "cosine", "sigmoid"] = "linear",
+        noise_schedule: Literal["linear", "cosine", "sigmoid"] = "linear",
         min_snr_loss_weight: bool = True,
         min_snr_gamma: float = 5.0,
         sampling_resolution: tuple[int, int] | None = None,
@@ -26,37 +26,40 @@ class GaussianDiffusion(nn.Module):
         clip_sample_range: float = 1,
     ):
         super().__init__()
-        self.denoiser = denoiser
+        self.model = model
         self.sampling = sampling
         self.num_training_steps = num_training_steps
-        self.objective = objective
-        self.beta_schedule = beta_schedule
+        self.objective = prediction_type
+        self.noise_schedule = noise_schedule
         self.min_snr_loss_weight = min_snr_loss_weight
         self.min_snr_gamma = min_snr_gamma
         self.clip_sample = clip_sample
         self.clip_sample_range = clip_sample_range
 
-        if criterion == "l2":
+        if loss_type == "l2":
             self.criterion = nn.MSELoss(reduction="none")
-        elif criterion == "l1":
+        elif loss_type == "l1":
             self.criterion = nn.L1Loss(reduction="none")
-        elif criterion == "huber":
+        elif loss_type == "huber":
             self.criterion = nn.SmoothL1Loss(reduction="none")
-        elif isinstance(criterion, nn.Module):
-            self.criterion = criterion
+        elif isinstance(loss_type, nn.Module):
+            self.criterion = loss_type
         else:
-            raise ValueError(f"invalid criterion: {criterion}")
+            raise ValueError(f"invalid criterion: {loss_type}")
         if hasattr(self.criterion, "reduction"):
             assert self.criterion.reduction == "none"
 
         if sampling_resolution is None:
-            assert hasattr(self.denoiser, "resolution")
-            assert hasattr(self.denoiser, "in_channels")
-            self.sampling_shape = (self.denoiser.in_channels, *self.denoiser.resolution)
+            assert hasattr(self.model, "resolution")
+            assert hasattr(self.model, "in_channels")
+            self.sampling_shape = (
+                self.model.in_channels,
+                *self.model.resolution,
+            )
         else:
             assert len(sampling_resolution) == 2
-            assert hasattr(self.denoiser, "in_channels")
-            self.sampling_shape = (self.denoiser.in_channels, *sampling_resolution)
+            assert hasattr(self.model, "in_channels")
+            self.sampling_shape = (self.model.in_channels, *sampling_resolution)
 
         self.setup_parameters()
         self.register_buffer("_dummy", torch.tensor([]))
@@ -96,21 +99,24 @@ class GaussianDiffusion(nn.Module):
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
         raise NotImplementedError
 
-    @torch.inference_mode()
-    def p_sample(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @autocast(enabled=False)
-    def q_sample(self, x_0, steps, noise):
-        raise NotImplementedError
-
-    def get_denoiser_condition(self, steps: torch.Tensor):
+    def get_network_condition(self, steps: torch.Tensor):
         raise NotImplementedError
 
     def get_target(self, x_0, steps, noise):
         raise NotImplementedError
 
     def get_loss_weight(self, steps):
+        raise NotImplementedError
+
+    @autocast(enabled=False)
+    def q_step_from_x_0(self, x_0, steps, rng):
+        raise NotImplementedError
+
+    def q_step(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @torch.inference_mode()
+    def p_step(self, *args, **kwargs):
         raise NotImplementedError
 
     def p_loss(
@@ -121,10 +127,9 @@ class GaussianDiffusion(nn.Module):
     ) -> torch.Tensor:
         # shared in continuous/discrete versions
         loss_mask = torch.ones_like(x_0) if loss_mask is None else loss_mask
-        noise = self.randn_like(x_0)
-        xt = self.q_sample(x_0, steps, noise)
-        condition = self.get_denoiser_condition(steps)
-        prediction = self.denoiser(xt, condition)
+        x_t, noise = self.q_step_from_x_0(x_0, steps)
+        condition = self.get_network_condition(steps)
+        prediction = self.model(x_t, condition)
         target = self.get_target(x_0, steps, noise)
         loss = self.criterion(prediction, target)  # (B,C,H,W)
         loss = einops.reduce(loss * loss_mask, "B ... -> B ()", "sum")
@@ -134,7 +139,9 @@ class GaussianDiffusion(nn.Module):
         return loss
 
     def forward(
-        self, x_0: torch.Tensor, loss_mask: torch.Tensor | None = None
+        self,
+        x_0: torch.Tensor,
+        loss_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         # shared in continuous/discrete versions
         steps = self.sample_timesteps(x_0.shape[0], x_0.device)
@@ -142,5 +149,15 @@ class GaussianDiffusion(nn.Module):
         return loss
 
     @torch.inference_mode()
-    def sample(self, *args, **kwargs):
+    def sample(
+        self,
+        batch_size: int,
+        num_steps: int,
+        progress: bool,
+        rng: list[torch.Generator] | torch.Generator | None,
+        return_all: bool,
+        mode: str,
+        *args,
+        **kwargs,
+    ):
         raise NotImplementedError

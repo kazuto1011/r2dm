@@ -1,5 +1,6 @@
 from typing import Iterable, Literal
 
+import einops
 import numpy as np
 import torch
 from torch import nn
@@ -36,14 +37,14 @@ class SelfAttentionBlock(nn.Module):
             batch_first=True,
         )
         self.attn.out_proj.apply(ops.zero_out)
-        self.register_buffer("scale", torch.tensor(scale))
+        self.register_buffer("scale", torch.tensor(scale).float())
 
     def residual(self, x: torch.Tensor) -> torch.Tensor:
-        B, C, H, W = x.shape
         h = self.norm(x)
-        h = h.reshape(B, C, H * W).permute(0, 2, 1)
+        B, C, H, W = h.shape
+        h = einops.rearrange(h, "B C H W -> B (H W) C")
         h, _ = self.attn(query=h, key=h, value=h, need_weights=False)
-        h = h.reshape(B, H, W, C).permute(0, 3, 1, 2)
+        h = einops.rearrange(h, "B (H W) C -> B C H W", H=H, W=W)
         return h
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -89,7 +90,7 @@ class ResidualBlock(nn.Module):
             else nn.Identity()
         )
 
-        self.register_buffer("scale", torch.tensor(scale))
+        self.register_buffer("scale", torch.tensor(scale).float())
 
     def residual(
         self, x: torch.Tensor, emb: torch.Tensor | None = None
@@ -138,7 +139,7 @@ class Block(nn.Module):
         )
 
         # resnet blocks x N
-        self.residual_blocks = ops.ConditionalSequence()
+        self.residual_blocks = ops.ConditionalSequential()
         for i in range(num_residual_blocks):
             self.residual_blocks.append(
                 ResidualBlock(
@@ -202,7 +203,7 @@ class EfficientUNet(nn.Module):
         gn_num_groups: int = 32 // 4,
         gn_eps: float = 1e-6,
         attn_num_heads: int = 8,
-        coords_embedding: Literal[
+        coords_encoding: Literal[
             "spherical_harmonics", "polar_coordinates", "fourier_features", None
         ] = "spherical_harmonics",
         ring: bool = True,
@@ -216,16 +217,16 @@ class EfficientUNet(nn.Module):
         # spatial coords embedding
         coords = encoding.generate_polar_coords(*self.resolution)
         self.register_buffer("coords", coords)
-        self.coords_embedding = None
-        if coords_embedding == "spherical_harmonics":
-            self.coords_embedding = encoding.SphericalHarmonics(levels=5)
-            in_channels += self.coords_embedding.extra_ch
-        elif coords_embedding == "polar_coordinates":
-            self.coords_embedding = nn.Identity()
+        self.coords_encoding = None
+        if coords_encoding == "spherical_harmonics":
+            self.coords_encoding = encoding.SphericalHarmonics(levels=5)
+            in_channels += self.coords_encoding.extra_ch
+        elif coords_encoding == "polar_coordinates":
+            self.coords_encoding = nn.Identity()
             in_channels += coords.shape[1]
-        elif coords_embedding == "fourier_features":
-            self.coords_embedding = encoding.FourierFeatures(self.resolution)
-            in_channels += self.coords_embedding.extra_ch
+        elif coords_encoding == "fourier_features":
+            self.coords_encoding = encoding.FourierFeatures(self.resolution)
+            in_channels += self.coords_encoding.extra_ch
 
         # timestep embedding
         self.time_embedding = nn.Sequential(
@@ -274,10 +275,10 @@ class EfficientUNet(nn.Module):
         temb = self.time_embedding(timesteps.to(h))
 
         # spatial embedding
-        if self.coords_embedding is not None:
-            cemb = self.coords_embedding(self.coords)
-            cemb = cemb.repeat_interleave(h.shape[0], dim=0)
-            h = torch.cat([h, cemb], dim=1)
+        if self.coords_encoding is not None:
+            cenc = self.coords_encoding(self.coords)
+            cenc = cenc.repeat_interleave(h.shape[0], dim=0)
+            h = torch.cat([h, cenc], dim=1)
 
         # u-net part
         h = self.in_conv(h)

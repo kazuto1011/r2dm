@@ -6,18 +6,18 @@ from torch import nn
 from torch.nn.modules.utils import _pair, _quadruple
 
 
-def zero_out(m):
+def zero_out(m: nn.Module):
     for p in m.parameters():
         p.data.zero_()
 
 
 class SinusoidalPositionalEmbedding(nn.Module):
-    def __init__(self, channels, max_period=10_000):
+    def __init__(self, channels: int, max_period: int = 10_000):
         super().__init__()
         self.channels = channels
         self.max_period = max_period
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert len(x.shape) == 1
         h = -np.log(self.max_period) / (self.channels // 2 - 1)
         h = torch.exp(h * torch.arange(self.channels // 2, device=x.device))
@@ -36,7 +36,7 @@ class Pad(nn.Module):
         self.horizontal = "circular" if ring else mode
         self.vertical = mode
 
-    def forward(self, h):
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
         left, right, top, bottom = self.padding
         h = F.pad(h, (left, right, 0, 0), mode=self.horizontal)
         h = F.pad(h, (0, 0, top, bottom), mode=self.vertical)
@@ -110,7 +110,7 @@ class Resample(nn.Module):
 
         self.margin = int(max(self.ph0, self.ph1, self.pw0, self.pw1))
 
-    def forward(self, h):
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
         # margin
         h = F.pad(h, (self.margin, self.margin, 0, 0), mode=self.pad_mode_w)
         h = F.pad(h, (0, 0, self.margin, self.margin), mode=self.pad_mode_h)
@@ -167,7 +167,7 @@ class Conv2d(nn.Conv2d):
         )
         self.pad = Pad(padding=padding, ring=ring) if padding != 0 else None
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.pad is not None:
             x = self.pad(x)
         return super().forward(x)
@@ -193,14 +193,14 @@ class AdaGN(nn.GroupNorm):
             Rearrange("B C -> B C 1 1"),
         )
 
-    def forward(self, x, emb):
+    def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
         h = super().forward(x)
         scale, shift = self.proj(emb).chunk(2, dim=1)
         h = h * (1 + scale) + shift
         return h
 
 
-class ConditionalSequence(nn.Sequential):
+class ConditionalSequential(nn.Sequential):
     def forward(self, x: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
         for module in self:
             x = module(x, condition)

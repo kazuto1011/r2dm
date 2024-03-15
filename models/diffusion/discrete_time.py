@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 from . import base
 
 
-def linear_beta_schedule(steps):
+def _linear_beta_schedule(steps):
     """
     linear schedule, proposed in original ddpm paper
     """
@@ -19,7 +19,7 @@ def linear_beta_schedule(steps):
     return torch.linspace(beta_start, beta_end, steps, dtype=torch.float64)
 
 
-def cosine_beta_schedule(steps, s=0.008):
+def _cosine_beta_schedule(steps, s=0.008):
     """
     cosine schedule
     as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
@@ -31,7 +31,7 @@ def cosine_beta_schedule(steps, s=0.008):
     return torch.clip(betas, 0, 0.999)
 
 
-def sigmoid_beta_schedule(steps, start=-3, end=3, tau=1, clamp_min=1e-5):
+def _sigmoid_beta_schedule(steps, start=-3, end=3, tau=1, clamp_min=1e-5):
     """
     sigmoid schedule
     proposed in https://arxiv.org/abs/2212.11972 - Figure 8
@@ -55,14 +55,16 @@ class DiscreteTimeGaussianDiffusion(base.GaussianDiffusion):
     """
 
     def setup_parameters(self) -> None:
-        if self.beta_schedule == "linear":
-            beta = linear_beta_schedule(self.num_training_steps)
-        elif self.beta_schedule == "cosine":
-            beta = cosine_beta_schedule(self.num_training_steps)
-        elif self.beta_schedule == "sigmoid":
-            beta = sigmoid_beta_schedule(self.num_training_steps)
+        assert self.num_training_steps is not None
+
+        if self.noise_schedule == "linear":
+            beta = _linear_beta_schedule(self.num_training_steps)
+        elif self.noise_schedule == "cosine":
+            beta = _cosine_beta_schedule(self.num_training_steps)
+        elif self.noise_schedule == "sigmoid":
+            beta = _sigmoid_beta_schedule(self.num_training_steps)
         else:
-            raise ValueError(f"invalid beta schedule {self.beta_schedule}")
+            raise ValueError(f"invalid beta schedule {self.noise_schedule}")
 
         beta = beta[:, None, None, None]  # 4D-tensor for images
         alpha = 1 - beta
@@ -70,33 +72,10 @@ class DiscreteTimeGaussianDiffusion(base.GaussianDiffusion):
         alpha_bar_prev = F.pad(alpha_bar[:-1], (0,) * 6 + (1, 0), value=1.0)
         snr = alpha_bar / (1 - alpha_bar)
 
-        clipped_snr = snr.clone()
-        if self.min_snr_loss_weight:
-            clipped_snr = clipped_snr.clamp(max=self.min_snr_gamma)
-        if self.objective == "eps":
-            loss_weight = clipped_snr / snr
-        elif self.objective == "x0":
-            loss_weight = clipped_snr
-        elif self.objective == "v":
-            loss_weight = clipped_snr / (snr + 1)
-        else:
-            raise ValueError(f"invalid objective {self.objective}")
-
         self.register_buffer("beta", beta.float())
         self.register_buffer("alpha_bar", alpha_bar.float())
         self.register_buffer("alpha_bar_prev", alpha_bar_prev.float())
-        self.register_buffer("loss_weight", loss_weight.float())
-
-    def get_target(self, x_0, steps, noise):
-        if self.objective == "eps":
-            return noise
-        elif self.objective == "x0":
-            return x_0
-        elif self.objective == "v":
-            alpha_bar = self.alpha_bar[steps]
-            return alpha_bar.sqrt() * noise - (1 - alpha_bar).sqrt() * x_0
-        else:
-            raise ValueError(f"invalid objective {self.objective}")
+        self.register_buffer("snr", snr.float())
 
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
         # discrete timesteps
@@ -108,21 +87,44 @@ class DiscreteTimeGaussianDiffusion(base.GaussianDiffusion):
             dtype=torch.long,
         )
 
-    def get_denoiser_condition(self, steps: torch.Tensor) -> torch.Tensor:
+    def get_network_condition(self, steps: torch.Tensor) -> torch.Tensor:
         return steps
 
-    @autocast(enabled=False)
-    def q_sample(self, x0, steps, noise):
-        alpha_bar = self.alpha_bar[steps]
-        xt = alpha_bar.sqrt() * x0 + (1 - alpha_bar).sqrt() * noise
-        return xt
+    def get_target(self, x_0, steps, noise):
+        if self.objective == "eps":
+            return noise
+        elif self.objective == "x_0":
+            return x_0
+        elif self.objective == "v":
+            alpha_bar = self.alpha_bar[steps]
+            return alpha_bar.sqrt() * noise - (1 - alpha_bar).sqrt() * x_0
+        else:
+            raise ValueError(f"invalid objective {self.objective}")
 
     def get_loss_weight(self, timesteps):
-        loss_weight_t = self.loss_weight[timesteps, None]
-        return loss_weight_t
+        snr = self.snr[timesteps]
+        clipped_snr = snr.clone()
+        if self.min_snr_loss_weight:
+            clipped_snr = clipped_snr.clamp(max=self.min_snr_gamma)
+        if self.objective == "eps":
+            loss_weight = clipped_snr / snr
+        elif self.objective == "x_0":
+            loss_weight = clipped_snr
+        elif self.objective == "v":
+            loss_weight = clipped_snr / (snr + 1)
+        else:
+            raise ValueError(f"invalid objective {self.objective}")
+        return loss_weight
+
+    @autocast(enabled=False)
+    def q_step_from_x_0(self, x_0, steps, rng=None):
+        noise = self.randn_like(x_0, rng=rng)
+        alpha_bar = self.alpha_bar[steps]
+        x_t = alpha_bar.sqrt() * x_0 + (1 - alpha_bar).sqrt() * noise
+        return x_t, noise
 
     @torch.inference_mode()
-    def p_sample(
+    def p_step(
         self,
         x_t: torch.Tensor,
         steps: torch.Tensor,
@@ -134,14 +136,14 @@ class DiscreteTimeGaussianDiffusion(base.GaussianDiffusion):
         alpha = 1 - beta
         alpha_bar = self.alpha_bar[steps]
         alpha_bar_prev = self.alpha_bar_prev[steps]
-        prediction = self.denoiser(x_t, steps)
+        prediction = self.model(x_t, steps)
         if self.objective == "eps":
             eps = prediction
             x_0 = alpha_bar.rsqrt() * x_t - (alpha_bar.reciprocal() - 1).sqrt() * eps
             if self.clip_sample:
                 noise = alpha_bar.rsqrt() * x_t - x_0
                 noise = noise / (alpha_bar.reciprocal() - 1).sqrt()
-        elif self.objective == "x0":
+        elif self.objective == "x_0":
             x_0 = prediction
         elif self.objective == "v":
             v = prediction
@@ -185,14 +187,15 @@ class DiscreteTimeGaussianDiffusion(base.GaussianDiffusion):
         progress: bool = True,
         rng: list[torch.Generator] | torch.Generator | None = None,
         return_all: bool = False,
+        mode: Literal["ddpm", "ddim"] = "ddpm",
     ):
         x = self.randn(batch_size, *self.sampling_shape, rng=rng, device=self.device)
         if return_all:
             out = [x]
         tqdm_kwargs = dict(desc="sampling", leave=False, disable=not progress)
         for timestep in tqdm(list(reversed(range(num_steps))), **tqdm_kwargs):
-            timesteps = torch.full((batch_size,), timestep, device=self.device).long()
-            x = self.p_sample(x, timesteps)
+            steps = torch.full((batch_size,), timestep, device=self.device).long()
+            x = self.p_step(x, steps, rng=rng, mode=mode)
             if return_all:
                 out.append(x)
         return torch.stack(out) if return_all else x

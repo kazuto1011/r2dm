@@ -15,7 +15,7 @@ import torch.nn.functional as F
 import torchvision
 
 
-def _count_in_ch(inputs: list[str]):
+def _count_in_ch(inputs: tuple[str]):
     channels = {"xyz": 3, "range": 1, "remission": 1, "mask": 1}
     in_ch = 0
     for modality in inputs:
@@ -51,7 +51,7 @@ class ResidualBlock(nn.Module):
             ConvNormLReLU(mid_ch, out_ch, 3, 1, 1, momentum),
         )
 
-    def forward(self, h):
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
         return h + self.residual(h)
 
 
@@ -95,7 +95,7 @@ class Block(nn.Module):
         for _ in range(num_blocks):
             self.residual_blocks.append(ResidualBlock(out_ch, in_ch, out_ch, momentum))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.conv(x)
         for block in self.residual_blocks:
             h = block(h)
@@ -105,10 +105,10 @@ class Block(nn.Module):
 class RangeNet(nn.Module):
     def __init__(
         self,
-        inputs: list[str],
+        inputs: tuple[str],
         num_classes: int,
-        momentum: list[float] | float = 0.01,
-        dropout: list[float] | float = 0.05,
+        momentum: tuple[float] | float = 0.01,
+        dropout: tuple[float] | float = 0.05,
         backbone: Literal[21, 53] = 53,
     ):
         super().__init__()
@@ -141,14 +141,14 @@ class RangeNet(nn.Module):
             nn.Conv2d(ch(0), num_classes, 3, 1, 1),
         )
 
-    def flatten_and_subsample(self, fmaps):
+    def flatten_and_subsample(self, fmaps: torch.Tensor) -> torch.Tensor:
         B, C, H, W = fmaps.shape
         feats = fmaps.view(B, C * H * W)
         random.seed(0)
         feats = feats[:, random.sample(range(C * H * W), 4096)]
         return feats
 
-    def forward(self, img, feature=None):
+    def forward(self, img: torch.Tensor, feature: str | None = None) -> torch.Tensor:
         h0 = self.stem(img)
         h1 = self.enc1(h0)
         h2 = self.enc2(self.dropout1(h1))
@@ -169,7 +169,7 @@ class RangeNet(nn.Module):
         return f"inputs={self.inputs}"
 
 
-def _get_gaussian_kernel(kernel_size, sigma, device="cpu"):
+def _get_gaussian_kernel(kernel_size: int, sigma: float, device="cpu") -> torch.Tensor:
     H, W = nn.modules.utils._pair(kernel_size)
     assert H % 2 == 1 and W % 2 == 1, "must be odd"
     hs = torch.arange(H, device=device) - H // 2
@@ -189,7 +189,14 @@ class kNN(nn.Module):
     - Reference: https://github.com/PRBonn/lidar-bonnetal/blob/master/train/tasks/semantic/postproc/KNN.py
     """
 
-    def __init__(self, num_classes, k=3, kernel_size=3, sigma=1.0, cutoff=1.0):
+    def __init__(
+        self,
+        num_classes: int,
+        k: int = 3,
+        kernel_size: int = 3,
+        sigma: float = 1.0,
+        cutoff: float = 1.0,
+    ):
         super().__init__()
         self.num_classes = num_classes
         self.k = k
@@ -202,7 +209,7 @@ class kNN(nn.Module):
         gaussian_kernel = _get_gaussian_kernel(self.kernel_size, self.sigma)
         self.register_buffer("dist_kernel", (1 - gaussian_kernel)[None, None])
 
-    def forward(self, depth, label):
+    def forward(self, depth: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
         B, C, H, W = depth.shape
         device = depth.device
 
@@ -252,14 +259,14 @@ class CRFRNN(nn.Module):
 
     def __init__(
         self,
-        num_classes,
-        kernel_size=(3, 5),
-        init_weight_smoothness=0.02,
-        init_weight_appearance=0.1,
-        theta_gamma=0.9,
-        theta_alpha=0.9,
-        theta_beta=0.015,
-        num_iters=3,
+        num_classes: int,
+        kernel_size: tuple[int] = (3, 5),
+        init_weight_smoothness: float = 0.02,
+        init_weight_appearance: float = 0.1,
+        theta_gamma: tuple[float] | float = 0.9,
+        theta_alpha: tuple[float] | float = 0.9,
+        theta_beta: tuple[float] | float = 0.015,
+        num_iters: int = 3,
     ):
         super().__init__()
         self.num_classes = num_classes
@@ -289,7 +296,12 @@ class CRFRNN(nn.Module):
         self.label_compatibility = nn.Conv2d(num_classes, num_classes, 1, 1, bias=False)
         self.label_compatibility.weight.data = init_potts_model
 
-    def get_smoothness_kernel(self, kernel_size, theta, device="cpu"):
+    def get_smoothness_kernel(
+        self,
+        kernel_size: tuple[int] | int,
+        theta: torch.Tensor,
+        device: torch.device = "cpu",
+    ) -> torch.Tensor:
         H, W = nn.modules.utils._pair(kernel_size)
         assert H % 2 == 1 and W % 2 == 1, "must be odd"
         hs = torch.arange(H, device=device) - H // 2
@@ -306,7 +318,7 @@ class CRFRNN(nn.Module):
     def apply(self, fn):
         return self  # do nothing
 
-    def unfold_neighbors(self, x):
+    def unfold_neighbors(self, x: torch.Tensor) -> torch.Tensor:
         B, C, H, W = x.shape
         # unfolding pixels within a kernel
         x = F.unfold(x, self.kernel_size, padding=self.padding)
@@ -318,7 +330,7 @@ class CRFRNN(nn.Module):
         x = x.index_select(dim=2, index=kernel_index)
         return x  # -> B C K-1 (H W)
 
-    def precompute_kernel_beta(self, xyz):
+    def precompute_kernel_beta(self, xyz: torch.Tensor) -> torch.Tensor:
         xyz_anchor = einops.rearrange(xyz, "B C H W -> B C 1 (H W)")
         xyz_neighbors = self.unfold_neighbors(xyz)  # -> B C K-1 (H W)
         pdist = (xyz_neighbors - xyz_anchor).pow(2).sum(dim=1, keepdim=True)
@@ -326,12 +338,16 @@ class CRFRNN(nn.Module):
         kernel = torch.exp(-pdist / (2 * theta**2))
         return kernel
 
-    def message_passing_smoothness(self, Q, kernel):
+    def message_passing_smoothness(
+        self, Q: torch.Tensor, kernel: torch.Tensor
+    ) -> torch.Tensor:
         # gaussian filtering by group convolution
         assert kernel.shape[0] == self.num_classes
         return F.conv2d(Q, kernel, padding=self.padding)
 
-    def message_passing_appearance(self, Q, kernel_beta, mask):
+    def message_passing_appearance(
+        self, Q: torch.Tensor, kernel_beta: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
         masked_Q = Q * mask
         exp_appearance = torch.ones_like(masked_Q).flatten(2)  # B C (H W)
         for i in range(exp_appearance.shape[0]):
@@ -342,12 +358,16 @@ class CRFRNN(nn.Module):
         exp_smoothness = self.message_passing_smoothness(Q, self.kernel_alpha)
         return exp_appearance * exp_smoothness  # bilateral kernel
 
-    def weighting_kernels(self, k_smoothness, k_appearance):
+    def weighting_kernels(
+        self, k_smoothness: torch.Tensor, k_appearance: torch.Tensor
+    ) -> torch.Tensor:
         k_smoothness = self.weight_smoothness * k_smoothness
         k_appearance = self.weight_appearance * k_appearance
         return k_smoothness + k_appearance
 
-    def forward(self, unary, xyz, mask):
+    def forward(
+        self, unary: torch.Tensor, xyz: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
         """
         unary: (B,N,H,W)
         xyz  : (B,3,H,W)
@@ -374,11 +394,11 @@ class CRFRNN(nn.Module):
 
 def _download_pretrained_weights(
     arch: str,
-    progress=True,
-):
+    progress: bool = True,
+) -> OrderedDict[str, torch.Tensor]:
     def _translate_param_name(src_name) -> str:
-        src_name: list[str] = src_name.split(".")
-        tgt_name: list[str] = src_name
+        src_name: tuple[str] = src_name.split(".")
+        tgt_name: tuple[str] = src_name
         if src_name[0] == "1":
             tgt_name[0] = "head.1"
         elif src_name[0] == "conv1":
@@ -451,7 +471,7 @@ class Preprocess(nn.Module):
             std=[12.32, 11.47, 6.91, 0.86, 0.16],
         )
 
-    def forward(self, img: torch.Tensor, mask: torch.Tensor):
+    def forward(self, img: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         assert img.ndim == mask.ndim == 4
         assert img.shape[1] == 5
         return self.transforms(img) * mask
@@ -482,14 +502,14 @@ _ID2LABEL = {
 
 
 def _build_model(
-    inputs: list[str],
+    inputs: tuple[str],
     num_classes: int,
     backbone: int,
     weights: str | None,
     compile: bool,
     device: str = "cpu",
     **kwargs: Any,
-):
+) -> tuple[nn.Module, nn.Module]:
     model = RangeNet(
         inputs=inputs,
         num_classes=num_classes,
@@ -512,7 +532,7 @@ def rangenet21(
     compile: bool = False,
     device: str = "cpu",
     **kwargs: Any,
-):
+) -> tuple[nn.Module, nn.Module]:
     """RangeNet with Darknet21 backbone from `RangeNet++: Fast and Accurate LiDAR Semantic Segmentation`."""
     base_kwargs = {
         "SemanticKITTI_64x2048": {
@@ -534,7 +554,7 @@ def rangenet53(
     compile: bool = False,
     device: str = "cpu",
     **kwargs: Any,
-):
+) -> tuple[nn.Module, nn.Module]:
     """RangeNet with Darknet53 backbone from `RangeNet++: Fast and Accurate LiDAR Semantic Segmentation`."""
     base_kwargs = {
         "SemanticKITTI_64x2048": {

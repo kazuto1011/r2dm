@@ -9,6 +9,7 @@ import datasets as ds
 import einops
 import torch
 import torch.nn.functional as F
+from rich import print
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
@@ -17,8 +18,8 @@ from metrics import bev, distribution
 from metrics.extractor import pointnet, rangenet
 
 # from LiDARGen
-EVAL_MAX_DEPTH = 63.0
-EVAL_MIN_DEPTH = 0.5
+MAX_DEPTH = 63.0
+MIN_DEPTH = 0.5
 DATASET_MAX_DEPTH = 80.0
 
 
@@ -26,19 +27,16 @@ def resize(x, size):
     return F.interpolate(x, size=size, mode="nearest-exact")
 
 
-class Features10k(torch.utils.data.Dataset):
-    def __init__(self, root, helper, train_reflectance, train_mask):
+class Samples(torch.utils.data.Dataset):
+    def __init__(self, root, helper):
         self.sample_path_list = sorted(Path(root).glob("*.pth"))[:10_000]
         self.helper = helper
-        self.train_reflectance = train_reflectance
-        self.train_mask = train_mask
 
     def __getitem__(self, index):
-        sample_path = self.sample_path_list[index]
-        img = torch.load(sample_path, map_location="cpu")
+        img = torch.load(self.sample_path_list[index], map_location="cpu")
         assert img.shape[0] == 5, img.shape
         depth = img[[0]]
-        mask = torch.logical_and(depth > EVAL_MIN_DEPTH, depth < EVAL_MAX_DEPTH).float()
+        mask = torch.logical_and(depth > MIN_DEPTH, depth < MAX_DEPTH).float()
         img = img * mask
         return img.float(), mask.float()
 
@@ -54,40 +52,16 @@ def evaluate(args):
     _, lidar_utils, cfg = utils.inference.setup_model(args.ckpt, device=device)
     lidar_utils.to(device)
 
-    print(f"{cfg.train_reflectance=}")
-    print(f"{cfg.train_mask=}")
-
     H, W = lidar_utils.resolution
-    model_img, preprocess_img = rangenet.rangenet53(
-        weights=f"SemanticKITTI_{H}x{W}", device=device, compile=True
+    extract_img_feats, preprocess_img = rangenet.rangenet53(
+        weights=f"SemanticKITTI_{H}x{W}",
+        device=device,
+        compile=True,
     )
-    model_pts = pointnet.pretrained_pointnet(
-        dataset="shapenet", device=device, compile=True
-    )
-
-    if args.dataset == "test":
-        split = ds.Split.TEST
-    elif args.dataset == "train":
-        split = ds.Split.TRAIN
-    elif args.dataset == "all":
-        split = ds.Split.ALL
-    else:
-        raise ValueError
-
-    dataset = ds.load_dataset(
-        path=f"data/{cfg.dataset}",
-        name=cfg.lidar_projection,
-        split=split,
-        num_proc=args.num_workers,
-    ).with_format("torch")
-    print(dataset)
-
-    loader = DataLoader(
-        dataset=dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        drop_last=False,
+    extract_pts_feats = pointnet.pretrained_pointnet(
+        dataset="shapenet",
+        device=device,
+        compile=True,
     )
 
     results = dict(img=dict(), pts=dict(), bev=dict(), info=dict())
@@ -98,37 +72,53 @@ def evaluate(args):
     # real set
     # =====================================================
 
+    real_loader = DataLoader(
+        dataset=ds.load_dataset(
+            path=f"data/{cfg.data.dataset}",
+            name=cfg.data.projection,
+            split={
+                "test": ds.Split.TEST,
+                "train": ds.Split.TRAIN,
+                "all": ds.Split.ALL,
+            }[args.dataset],
+            num_proc=args.num_workers,
+            trust_remote_code=True,
+        ).with_format("torch"),
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        drop_last=False,
+    )
+
     cache_file_path = (
-        f"real_set_{cfg.dataset}_{cfg.lidar_projection}_{H}x{W}_{args.dataset}.pkl"
+        f"real_set_{cfg.data.dataset}_{cfg.data.projection}_{H}x{W}_{args.dataset}.pkl"
     )
     if Path(cache_file_path).exists():
         print(f"found cached {cache_file_path}")
         real_set = pickle.load(open(cache_file_path, "rb"))
     else:
         real_set = dict(img_feats=list(), pts_feats=list(), bev_hists=list())
-        for batch in tqdm(loader, desc="real"):
+        for batch in tqdm(real_loader, desc="real"):
             depth = resize(batch["depth"], (H, W)).to(device)
             xyz = resize(batch["xyz"], (H, W)).to(device)
             rflct = resize(batch["reflectance"], (H, W)).to(device)
             mask = resize(batch["mask"], (H, W)).to(device)
-            mask = mask * torch.logical_and(
-                depth > EVAL_MIN_DEPTH, depth < EVAL_MAX_DEPTH
-            )
+            mask = mask * torch.logical_and(depth > MIN_DEPTH, depth < MAX_DEPTH)
             imgs_frd = torch.cat([depth, xyz, rflct], dim=1)
             with torch.inference_mode():
-                feats_img = model_img(
+                feats_img = extract_img_feats(
                     preprocess_img(imgs_frd, mask), feature="lidargen"
                 )
             real_set["img_feats"].append(feats_img.cpu())
 
-            pcs = einops.rearrange(xyz * mask, "B C H W -> B C (H W)")
-            for pc in pcs:
-                pc = einops.rearrange(pc, "C N -> N C")
-                hist = bev.point_cloud_to_histogram(pc)
+            point_clouds = einops.rearrange(xyz * mask, "B C H W -> B C (H W)")
+            for point_cloud in point_clouds:
+                point_cloud = einops.rearrange(point_cloud, "C N -> N C")
+                hist = bev.point_cloud_to_histogram(point_cloud)
                 real_set["bev_hists"].append(hist.cpu())
 
             with torch.inference_mode():
-                feats_pts = model_pts(pcs / DATASET_MAX_DEPTH)
+                feats_pts = extract_pts_feats(point_clouds / DATASET_MAX_DEPTH)
             real_set["pts_feats"].append(feats_pts.cpu())
 
         real_set["img_feats"] = torch.cat(real_set["img_feats"], dim=0).numpy()
@@ -142,35 +132,34 @@ def evaluate(args):
     # gen set
     # =====================================================
 
-    dataset = Features10k(
-        args.sample_dir,
-        helper=lidar_utils.cpu(),
-        train_reflectance=cfg.train_reflectance,
-        train_mask=cfg.train_mask,
+    gen_loader = DataLoader(
+        dataset=Samples(args.sample_dir, helper=lidar_utils.cpu()),
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
     )
-    gen_loader = DataLoader(dataset, batch_size=64, num_workers=4)
     gen_set = dict(img_feats=list(), pts_feats=list(), bev_hists=list())
+
     for imgs_frd, mask in tqdm(gen_loader, desc="gen"):
         imgs_frd, mask = imgs_frd.to(device), mask.to(device)
-        if cfg.train_reflectance:
+        if cfg.data.train_reflectance:
             with torch.inference_mode():
-                feats_img = model_img(
+                feats_img = extract_img_feats(
                     preprocess_img(imgs_frd, mask), feature="lidargen"
                 )
             gen_set["img_feats"].append(feats_img.cpu())
 
         xyz = imgs_frd[:, 1:4]
-        pcs = einops.rearrange(xyz * mask, "B C H W -> B C (H W)")
-        for pc in pcs:
-            pc = einops.rearrange(pc, "C N -> N C")
-            hist = bev.point_cloud_to_histogram(pc)
+        point_clouds = einops.rearrange(xyz * mask, "B C H W -> B C (H W)")
+        for point_cloud in point_clouds:
+            point_cloud = einops.rearrange(point_cloud, "C N -> N C")
+            hist = bev.point_cloud_to_histogram(point_cloud)
             gen_set["bev_hists"].append(hist.cpu())
 
         with torch.inference_mode():
-            feats_pts = model_pts(pcs / DATASET_MAX_DEPTH)
+            feats_pts = extract_pts_feats(point_clouds / DATASET_MAX_DEPTH)
         gen_set["pts_feats"].append(feats_pts.cpu())
 
-    if cfg.train_reflectance:
+    if cfg.data.train_reflectance:
         gen_set["img_feats"] = torch.cat(gen_set["img_feats"], dim=0).numpy()
     gen_set["pts_feats"] = torch.cat(gen_set["pts_feats"], dim=0).numpy()
     gen_set["bev_hists"] = torch.stack(gen_set["bev_hists"], dim=0).numpy()
@@ -182,7 +171,7 @@ def evaluate(args):
     # =====================================================
     torch.cuda.empty_cache()
 
-    if cfg.train_reflectance:
+    if cfg.data.train_reflectance:
         results["img"]["frechet_distance"] = distribution.compute_frechet_distance(
             real_set["img_feats"], gen_set["img_feats"]
         )
@@ -228,5 +217,4 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=4)
     args = parser.parse_args()
-
     evaluate(args)

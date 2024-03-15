@@ -8,6 +8,7 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from rich import print
 
 import utils.inference
 import utils.render
@@ -28,7 +29,7 @@ def main(args):
 
     ddpm, lidar_utils, cfg = utils.inference.setup_model(args.ckpt, device=device)
 
-    H, W = cfg.resolution
+    H, W = cfg.data.resolution
     semseg, preprocess = rangenet.rangenet53(
         weights=f"SemanticKITTI_{H}x{W}",
         compile=False,
@@ -52,8 +53,8 @@ def main(args):
     # =================================================================================
 
     dataset = ds.load_dataset(
-        path=f"data/{cfg.dataset}",
-        name=cfg.lidar_projection,
+        path=f"data/{cfg.data.dataset}",
+        name=cfg.data.projection,
         split=ds.Split.TEST,
         trust_remote_code=True,
     ).with_format("torch")
@@ -71,7 +72,7 @@ def main(args):
     rydrp = item["mask"][None].float().to(device)
     x_orig = torch.cat([depth, rflct], dim=1)
     x_orig = rydrp * x_orig + (1 - rydrp) * -1
-    x_orig = F.interpolate(x_orig, size=cfg.resolution, mode="nearest-exact")
+    x_orig = F.interpolate(x_orig, size=cfg.data.resolution, mode="nearest-exact")
 
     # =================================================================================
     # Simulate corruptions

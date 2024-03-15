@@ -4,12 +4,15 @@ from pathlib import Path
 
 import torch
 from accelerate import Accelerator
+from rich import print
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm.auto import tqdm
 
 import utils.inference
 
 warnings.filterwarnings("ignore", category=UserWarning)
+torch._dynamo.config.suppress_errors = True
+torch._dynamo.config.automatic_dynamic_shapes = False
 
 
 def sample(args):
@@ -20,8 +23,8 @@ def sample(args):
     ddpm, lidar_utils, cfg = utils.inference.setup_model(args.ckpt)
 
     accelerator = Accelerator(
-        mixed_precision=cfg.mixed_precision,
-        dynamo_backend=cfg.dynamo_backend,
+        mixed_precision=cfg.training.mixed_precision,
+        dynamo_backend=cfg.training.dynamo_backend,
         split_batches=True,
         even_batches=False,
         step_scheduler_with_optimizer=True,
@@ -29,12 +32,12 @@ def sample(args):
     device = accelerator.device
 
     if accelerator.is_main_process:
-        print(f"{cfg=}")
+        print(cfg)
 
     dataloader = DataLoader(
         TensorDataset(torch.arange(args.num_samples).long()),
         batch_size=args.batch_size,
-        num_workers=cfg.num_workers,
+        num_workers=cfg.training.num_workers,
         drop_last=False,
     )
 
@@ -64,7 +67,7 @@ def sample(args):
         else:
             (seeds,) = seeds
 
-        with torch.cuda.amp.autocast(cfg.mixed_precision is not None):
+        with torch.cuda.amp.autocast(cfg.training.mixed_precision is not None):
             samples = sample_fn(
                 batch_size=len(seeds),
                 num_steps=args.num_steps,

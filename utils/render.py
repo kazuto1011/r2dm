@@ -6,7 +6,15 @@ import torch.nn.functional as F
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 
 
-def make_Rt(roll=0, pitch=0, yaw=0, x=0, y=0, z=0, device="cpu"):
+def make_Rt(
+    roll: float = 0.0,
+    pitch: float = 0.0,
+    yaw: float = 0.0,
+    x: float = 0.0,
+    y: float = 0.0,
+    z: float = 0.0,
+    device: torch.device = "cpu",
+) -> tuple[torch.Tensor, torch.Tensor]:
     # rotation of point clouds
     zero = torch.zeros(1, device=device)
     roll = torch.full_like(zero, fill_value=roll, device=device)
@@ -28,7 +36,7 @@ def render_point_clouds(
     R: torch.Tensor | None = None,
     t: torch.Tensor | None = None,
     focal_length=1.0,
-):
+) -> torch.Tensor:
     points = points.clone()
     points[..., 2] *= -1
     device = points.device
@@ -72,7 +80,9 @@ def render_point_clouds(
     return bev
 
 
-def bilinear_rasterizer(coords, values, out_shape):
+def bilinear_rasterizer(
+    coords: torch.Tensor, values: torch.Tensor, out_shape: tuple[int, int]
+):
     """
     https://github.com/VCL3D/SphericalViewSynthesis/blob/master/supervision/splatting.py
     """
@@ -132,7 +142,9 @@ def bilinear_rasterizer(coords, values, out_shape):
     return render
 
 
-def estimate_surface_normal(points, d=2, mode="closest"):
+def estimate_surface_normal(
+    points: torch.Tensor, d: int = 2, mode: str = "closest"
+) -> torch.Tensor:
     # estimate surface normal from coordinated point clouds
     # re-implemented the following codes with pytorch:
     # https://github.com/wkentaro/morefusion/blob/master/morefusion/geometry/estimate_pointcloud_normals.py
@@ -225,7 +237,7 @@ def estimate_surface_normal(points, d=2, mode="closest"):
 
 
 @torch.no_grad()
-def colorize(tensor, cmap_fn=cm.turbo):
+def colorize(tensor: torch.Tensor, cmap_fn=cm.turbo) -> torch.Tensor:
     colors = cmap_fn(np.linspace(0, 1, 256))[:, :3]
     colors = torch.from_numpy(colors).to(tensor)
     tensor = tensor.squeeze(1) if tensor.ndim == 4 else tensor

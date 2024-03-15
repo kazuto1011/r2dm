@@ -11,37 +11,37 @@ from tqdm.auto import tqdm
 from . import base
 
 
-def log(t, eps=1e-20):
+def _log(t, eps=1e-20):
     return torch.log(t.clamp(min=eps))
 
 
-def log_snr_schedule_linear(t: torch.Tensor) -> torch.Tensor:
-    return -log(expm1(1e-4 + 10 * (t**2)))
+def _log_snr_schedule_linear(t: torch.Tensor) -> torch.Tensor:
+    return -_log(expm1(1e-4 + 10 * (t**2)))[:, None, None, None]
 
 
-def log_snr_schedule_cosine(
+def _log_snr_schedule_cosine(
     t: torch.Tensor,
     logsnr_min: float = -15,
     logsnr_max: float = 15,
 ) -> torch.Tensor:
     t_min = math.atan(math.exp(-0.5 * logsnr_max))
     t_max = math.atan(math.exp(-0.5 * logsnr_min))
-    return -2 * log(torch.tan(t_min + t * (t_max - t_min)))
+    return -2 * _log(torch.tan(t_min + t * (t_max - t_min)))[:, None, None, None]
 
 
-def log_snr_schedule_cosine_shifted(
+def _log_snr_schedule_cosine_shifted(
     t: torch.Tensor,
     image_d: float,
     noise_d: float,
     logsnr_min: float = -15,
     logsnr_max: float = 15,
 ) -> torch.Tensor:
-    log_snr = log_snr_schedule_cosine(t, logsnr_min=logsnr_min, logsnr_max=logsnr_max)
+    log_snr = _log_snr_schedule_cosine(t, logsnr_min=logsnr_min, logsnr_max=logsnr_max)
     shift = 2 * math.log(noise_d / image_d)
     return log_snr + shift
 
 
-def log_snr_schedule_cosine_interpolated(
+def _log_snr_schedule_cosine_interpolated(
     t: torch.Tensor,
     image_d: float,
     noise_d_low: float,
@@ -49,13 +49,18 @@ def log_snr_schedule_cosine_interpolated(
     logsnr_min: float = -15,
     logsnr_max: float = 15,
 ) -> torch.Tensor:
-    logsnr_low = log_snr_schedule_cosine_shifted(
+    logsnr_low = _log_snr_schedule_cosine_shifted(
         t, image_d, noise_d_low, logsnr_min, logsnr_max
     )
-    logsnr_high = log_snr_schedule_cosine_shifted(
+    logsnr_high = _log_snr_schedule_cosine_shifted(
         t, image_d, noise_d_high, logsnr_min, logsnr_max
     )
     return t * logsnr_low + (1 - t) * logsnr_high
+
+
+def _log_snr_to_alpha_sigma(log_snr: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    alpha, sigma = log_snr.sigmoid().sqrt(), (-log_snr).sigmoid().sqrt()
+    return alpha, sigma
 
 
 class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
@@ -66,10 +71,10 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
 
     def __init__(
         self,
-        denoiser: nn.Module,
-        criterion: Literal["l2", "l1", "huber"] | nn.Module = "l2",
-        objective: Literal["eps", "v", "x0"] = "eps",
-        beta_schedule: Literal[
+        model: nn.Module,
+        prediction_type: Literal["eps", "v", "x_0"] = "eps",
+        loss_type: Literal["l2", "l1", "huber"] | nn.Module = "l2",
+        noise_schedule: Literal[
             "linear", "cosine", "cosine_shifted", "cosine_interpolated"
         ] = "cosine",
         min_snr_loss_weight: bool = True,
@@ -82,12 +87,12 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         noise_d_high: float = None,
     ):
         super().__init__(
-            denoiser=denoiser,
+            model=model,
             sampling="ddpm",
-            criterion=criterion,
+            prediction_type=prediction_type,
+            loss_type=loss_type,
             num_training_steps=None,
-            objective=objective,
-            beta_schedule=beta_schedule,
+            noise_schedule=noise_schedule,
             min_snr_loss_weight=min_snr_loss_weight,
             min_snr_gamma=min_snr_gamma,
             sampling_resolution=sampling_resolution,
@@ -99,81 +104,93 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         self.noise_d_high = noise_d_high
 
     def setup_parameters(self) -> None:
-        if self.beta_schedule == "linear":
-            self.log_snr = log_snr_schedule_linear
-        elif self.beta_schedule == "cosine":
-            self.log_snr = log_snr_schedule_cosine
-        elif self.beta_schedule == "cosine_shifted":
+        if self.noise_schedule == "linear":
+            self.log_snr = _log_snr_schedule_linear
+        elif self.noise_schedule == "cosine":
+            self.log_snr = _log_snr_schedule_cosine
+        elif self.noise_schedule == "cosine_shifted":
             assert self.image_d is not None and self.noise_d_low is not None
             self.log_snr = partial(
-                log_snr_schedule_cosine_shifted,
+                _log_snr_schedule_cosine_shifted,
                 image_d=self.image_d,
                 noise_d=self.noise_d_low,
             )
-        elif self.beta_schedule == "cosine_interpolated":
+        elif self.noise_schedule == "cosine_interpolated":
             assert (
                 self.image_d is not None
                 and self.noise_d_low is not None
                 and self.noise_d_high is not None
             )
             self.log_snr = partial(
-                log_snr_schedule_cosine_interpolated,
+                _log_snr_schedule_cosine_interpolated,
                 image_d=self.image_d,
                 noise_d_low=self.noise_d_low,
                 noise_d_high=self.noise_d_high,
             )
         else:
-            raise ValueError(f"invalid beta schedule: {self.beta_schedule}")
-
-    @staticmethod
-    def log_snr_to_alpha_sigma(log_snr):
-        alpha, sigma = log_snr.sigmoid().sqrt(), (-log_snr).sigmoid().sqrt()
-        return alpha, sigma
-
-    def get_target(self, x_0, step_t, noise):
-        if self.objective == "eps":
-            target = noise
-        elif self.objective == "x0":
-            target = x_0
-        elif self.objective == "v":
-            log_snr = self.log_snr(step_t)[:, None, None, None]
-            alpha, sigma = self.log_snr_to_alpha_sigma(log_snr)
-            target = alpha * noise - sigma * x_0
-        else:
-            raise ValueError(f"invalid objective {self.objective}")
-        return target
+            raise ValueError(f"invalid beta schedule: {self.noise_schedule}")
 
     def sample_timesteps(self, batch_size: int, device: torch.device) -> torch.Tensor:
         # continuous timesteps
         return torch.rand(batch_size, device=device, dtype=torch.float32)
 
-    def get_denoiser_condition(self, steps):
-        return self.log_snr(steps)
+    def get_network_condition(self, steps):
+        return self.log_snr(steps)[:, 0, 0, 0]
 
-    @autocast(enabled=False)
-    def q_sample(self, x_0, step_t, noise):
-        # forward diffusion process q(zt|x0) where 0<t<1
-        log_snr = self.log_snr(step_t)[:, None, None, None]
-        alpha, sigma = self.log_snr_to_alpha_sigma(log_snr)
-        x_t = x_0 * alpha + noise * sigma
-        return x_t
+    def get_target(self, x_0, step_t, noise):
+        if self.objective == "eps":
+            target = noise
+        elif self.objective == "x_0":
+            target = x_0
+        elif self.objective == "v":
+            log_snr = self.log_snr(step_t)
+            alpha, sigma = _log_snr_to_alpha_sigma(log_snr)
+            target = alpha * noise - sigma * x_0
+        else:
+            raise ValueError(f"invalid objective {self.objective}")
+        return target
 
     def get_loss_weight(self, steps):
-        log_snr = self.log_snr(steps)[:, None, None, None]
+        log_snr = self.log_snr(steps)
         snr = log_snr.exp()
         clipped_snr = snr.clone()
         if self.min_snr_loss_weight:
             clipped_snr.clamp_(max=self.min_snr_gamma)
         if self.objective == "eps":
             loss_weight = clipped_snr / snr
+        elif self.objective == "x_0":
+            loss_weight = clipped_snr
         elif self.objective == "v":
             loss_weight = clipped_snr / (snr + 1)
         else:
             raise ValueError(f"invalid objective {self.objective}")
         return loss_weight
 
+    @autocast(enabled=False)
+    def q_step_from_x_0(self, x_0, step_t, rng=None):
+        # forward diffusion process q(zt|x0) where 0<t<1
+        noise = self.randn_like(x_0, rng=rng)
+        log_snr = self.log_snr(step_t)
+        alpha, sigma = _log_snr_to_alpha_sigma(log_snr)
+        x_t = x_0 * alpha + noise * sigma
+        return x_t, noise
+
+    def q_step(self, x_s, step_t, step_s, rng=None):
+        # q(zt|zs) where 0<s<t<1
+        # cf. Appendix A of https://arxiv.org/pdf/2107.00630.pdf
+        log_snr_t = self.log_snr(step_t)
+        log_snr_s = self.log_snr(step_s)
+        alpha_t, sigma_t = _log_snr_to_alpha_sigma(log_snr_t)
+        alpha_s, sigma_s = _log_snr_to_alpha_sigma(log_snr_s)
+        alpha_ts = alpha_t / alpha_s
+        var_noise = self.randn_like(x_s, rng=rng)
+        mean = x_s * alpha_ts
+        var = sigma_t.pow(2) - alpha_ts.pow(2) * sigma_s.pow(2)
+        x_t = mean + var.sqrt() * var_noise
+        return x_t
+
     @torch.inference_mode()
-    def p_sample(
+    def p_step(
         self,
         x_t: torch.Tensor,
         step_t: torch.Tensor,
@@ -182,16 +199,16 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         mode: Literal["ddpm", "ddim"] = "ddpm",
     ) -> torch.Tensor:
         # reverse diffusion process p(zs|zt) where 0<s<t<1
-        log_snr_t = self.log_snr(step_t)[:, None, None, None]
-        log_snr_s = self.log_snr(step_s)[:, None, None, None]
-        alpha_t, sigma_t = self.log_snr_to_alpha_sigma(log_snr_t)
-        alpha_s, sigma_s = self.log_snr_to_alpha_sigma(log_snr_s)
-        prediction = self.denoiser(x_t, log_snr_t[:, 0, 0, 0])
+        log_snr_t = self.log_snr(step_t)
+        log_snr_s = self.log_snr(step_s)
+        alpha_t, sigma_t = _log_snr_to_alpha_sigma(log_snr_t)
+        alpha_s, sigma_s = _log_snr_to_alpha_sigma(log_snr_s)
+        prediction = self.model(x_t, log_snr_t[:, 0, 0, 0])
         if self.objective == "eps":
             x_0 = (x_t - sigma_t * prediction) / alpha_t
         elif self.objective == "v":
             x_0 = alpha_t * x_t - sigma_t * prediction
-        elif self.objective == "x0":
+        elif self.objective == "x_0":
             x_0 = prediction
         else:
             raise ValueError(f"invalid objective {self.objective}")
@@ -204,9 +221,6 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
             var_noise = self.randn_like(x_t, rng=rng)
             var_noise[step_t == 0] = 0
             x_s = mean + var.sqrt() * var_noise
-        elif mode == "ddim":
-            noise = (x_t - alpha_t * x_0) / sigma_t.clamp(min=1e-8)
-            x_s = alpha_s * x_0 + sigma_s * noise
         else:
             raise ValueError(f"invalid mode {mode}")
         return x_s
@@ -219,7 +233,7 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         progress: bool = True,
         rng: list[torch.Generator] | torch.Generator | None = None,
         return_all: bool = False,
-        mode: Literal["ddpm", "ddim"] = "ddpm",
+        mode: Literal["ddpm"] = "ddpm",
     ):
         x = self.randn(batch_size, *self.sampling_shape, rng=rng, device=self.device)
         if return_all:
@@ -230,24 +244,10 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         for i in tqdm(range(num_steps), **tqdm_kwargs):
             step_t = steps[:, i]
             step_s = steps[:, i + 1]
-            x = self.p_sample(x, step_t, step_s, rng=rng, mode=mode)
+            x = self.p_step(x, step_t, step_s, rng=rng, mode=mode)
             if return_all:
                 out.append(x)
         return torch.stack(out) if return_all else x
-
-    def q_step_back(self, x_s, step_t, step_s, rng=None):
-        # q(zt|zs) where 0<s<t<1
-        # cf. Appendix A of https://arxiv.org/pdf/2107.00630.pdf
-        log_snr_t = self.log_snr(step_t)[:, None, None, None]
-        log_snr_s = self.log_snr(step_s)[:, None, None, None]
-        alpha_t, sigma_t = self.log_snr_to_alpha_sigma(log_snr_t)
-        alpha_s, sigma_s = self.log_snr_to_alpha_sigma(log_snr_s)
-        alpha_ts = alpha_t / alpha_s
-        var_noise = self.randn_like(x_s, rng=rng)
-        mean = x_s * alpha_ts
-        var = sigma_t.pow(2) - alpha_ts.pow(2) * sigma_s.pow(2)
-        x_t = mean + var.sqrt() * var_noise
-        return x_t
 
     @torch.inference_mode()
     def repaint(
@@ -286,9 +286,8 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
                 for k in range(jump_length):
                     r_step_t = r_steps[:, k]
                     r_step_s = r_steps[:, k + 1]
-                    noise = self.randn_like(known, rng=rng)
-                    known_s = self.q_sample(known, r_step_s, noise)
-                    unknown_s = self.p_sample(x, r_step_t, r_step_s, rng=rng)
+                    known_s, _ = self.q_step_from_x_0(known, r_step_s, rng=rng)
+                    unknown_s = self.p_step(x, r_step_t, r_step_s, rng=rng)
                     x = mask * known_s + (1 - mask) * unknown_s
                 x_s = x
 
@@ -304,7 +303,7 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
                 for k in range(jump_length, 0, -1):
                     r_step_t = r_steps[:, k - 1]
                     r_step_s = r_steps[:, k]
-                    x = self.q_step_back(x, r_step_t, r_step_s, rng=rng)
+                    x = self.q_step(x, r_step_t, r_step_s, rng=rng)
                 x_t = x
 
         return torch.stack(out) if return_all else x_s

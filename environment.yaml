@@ -5,25 +5,26 @@ channels:
   - nvidia
   - pytorch
 dependencies:
-  - scipy=1.11.1
   - conda-forge::accelerate=0.22.0
   - conda-forge::black=23.7.0
   - conda-forge::datasets=2.16.0
   - conda-forge::einops=0.6.1
+  - conda-forge::imageio=2.34.0
+  - conda-forge::imageio-ffmpeg=0.4.9
   - conda-forge::kornia=0.7.0
   - conda-forge::matplotlib=3.7.1
   - conda-forge::numba=0.57.0
   - conda-forge::pip
+  - conda-forge::pydantic=2.6.3
   - conda-forge::python=3.10
   - conda-forge::rich=13.5.1
+  - conda-forge::simple-parsing=0.1.5
   - conda-forge::tensorboard=2.14.0
   - conda-forge::tqdm=4.66.1
   - pytorch::pytorch-cuda=12.1
   - pytorch::pytorch=2.1.0
   - pytorch::torchvision=0.16.0
+  - scipy=1.11.1
   - pip:
-      - simple_parsing
       - ema-pytorch
-      - imageio
-      - imageio-ffmpeg
       - joblib
