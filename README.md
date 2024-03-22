@@ -12,21 +12,21 @@ ICRA 2024<br>
 **Quick demo:**
 
 ```sh
-pip install torch torchvision numpy einops tqdm
+pip install torch torchvision einops tqdm pydantic
 ```
 
 ```py
 import torch
 
-# sampling
-ddpm, lidar_utils, _ = torch.hub.load("kazuto1011/r2dm", "pretrained_r2dm", device="cuda")
-output = ddpm.sample(batch_size=1, num_steps=256)  # (B,2,H,W)
+# Setup our pre-trained model & sampling
+r2dm, lidar_utils, cfg = torch.hub.load("kazuto1011/r2dm", "pretrained_r2dm", device="cuda")
+lidar_image = r2dm.sample(batch_size=1, num_steps=256)  # (batch size, 2, height, width)
 
-# postprocessing
-output = lidar_utils.denormalize(output.clamp(-1, 1))
-range_image = lidar_utils.revert_depth(output[:, [0]])
-reflectance_image = output[:, [1]]
-point_clouds = lidar_utils.to_xyz(range_image)
+# Postprocessing
+lidar_image = lidar_utils.denormalize(lidar_image.clamp(-1, 1))  # [-1,1] -> [0,1]
+range_image = lidar_utils.revert_depth(lidar_image[:, [0]])  # Range
+rflct_image = lidar_image[:, [1]]  # Reflectance
+point_cloud = lidar_utils.to_xyz(range_image)  # Point cloud
 ```
 
 ## Setup

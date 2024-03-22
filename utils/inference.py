@@ -22,7 +22,7 @@ def setup_model(
     device: torch.device | str = "cpu",
     ema: bool = True,
     show_info: bool = True,
-    compile_denoiser: bool = False,
+    compile: bool = False,
 ) -> tuple[GaussianDiffusion, LiDARUtility, Config]:
     if isinstance(ckpt, (str, Path)):
         ckpt = torch.load(ckpt, map_location="cpu")
@@ -82,7 +82,7 @@ def setup_model(
     ddpm.eval()
     ddpm.to(device)
 
-    if compile_denoiser:
+    if compile:
         ddpm.model = torch.compile(ddpm.model)
 
     lidar_utils = LiDARUtility(
@@ -99,8 +99,8 @@ def setup_model(
         print(
             *[
                 f"resolution: {model.resolution}",
-                f"denoiser: {model.__class__.__name__}",
-                f"diffusion: {ddpm.__class__.__name__}",
+                f"model: {model.__class__.__name__}",
+                f"ddpm: {ddpm.__class__.__name__}",
                 f'#steps:  {ckpt["global_step"]:,}',
                 f"#params: {count_parameters(ddpm):,}",
             ],
