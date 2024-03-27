@@ -8,8 +8,8 @@ class ModelConfig:
     architecture: str = "efficient_unet"
     base_channels: int = 64
     temb_channels: int | None = None
-    channel_multiplier: Tuple[int, ...] | int = (1, 2, 4, 8)
-    num_residual_blocks: Tuple[int, ...] | int = (3, 3, 3, 3)
+    channel_multiplier: Tuple[int, int, int, int] = (1, 2, 4, 8)
+    num_residual_blocks: Tuple[int, int, int, int] = (3, 3, 3, 3)
     gn_num_groups: int = 32 // 4
     gn_eps: float = 1e-6
     attn_num_heads: int = 8
