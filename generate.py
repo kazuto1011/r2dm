@@ -30,6 +30,7 @@ def main(args):
     xs = ddpm.sample(
         batch_size=args.batch_size,
         num_steps=args.sampling_steps,
+        mode=args.mode,
         return_all=True,
     ).clamp(-1, 1)
 
@@ -79,6 +80,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ckpt", type=Path, required=True)
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
+    parser.add_argument("--mode", choices=["ddpm", "ddim"], default="ddpm")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--sampling_steps", type=int, default=256)
     args = parser.parse_args()
