@@ -81,8 +81,6 @@ def sample(args):
             sample = samples[i]
             torch.save(sample.clone(), save_dir / f"samples_{seeds[i]:010d}.pth")
 
-        accelerator.wait_for_everyone()
-
 
 if __name__ == "__main__":
     parser = ArgumentParser()

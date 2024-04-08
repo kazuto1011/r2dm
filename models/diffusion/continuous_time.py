@@ -197,6 +197,7 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         step_s: torch.Tensor,
         rng: List[torch.Generator] | torch.Generator | None = None,
         mode: Literal["ddpm", "ddim"] = "ddpm",
+        eta: float = 0.0,
     ) -> torch.Tensor:
         # reverse diffusion process p(zs|zt) where 0<s<t<1
         log_snr_t = self.log_snr(step_t)
@@ -221,6 +222,15 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
             var_noise = self.randn_like(x_t, rng=rng)
             var_noise[step_t == 0] = 0
             x_s = mean + var.sqrt() * var_noise
+        elif mode == "ddim":
+            std_dev = eta * sigma_s / sigma_t * (1 - alpha_t**2 / alpha_s**2).sqrt()
+            eps = (x_t - alpha_t * x_0) / sigma_t
+            x_s_dir = (1 - alpha_s**2 - std_dev**2).sqrt() * eps
+            x_s = alpha_s * x_0 + x_s_dir
+            if eta > 0:
+                var_noise = self.randn_like(x_t, rng=rng)
+                var_noise[step_t == 0] = 0
+                x_s = x_s + std_dev * var_noise
         else:
             raise ValueError(f"invalid mode {mode}")
         return x_s
@@ -233,7 +243,7 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         progress: bool = True,
         rng: list[torch.Generator] | torch.Generator | None = None,
         return_all: bool = False,
-        mode: Literal["ddpm"] = "ddpm",
+        mode: Literal["ddpm", "ddim"] = "ddpm",
     ):
         x = self.randn(batch_size, *self.sampling_shape, rng=rng, device=self.device)
         if return_all:
