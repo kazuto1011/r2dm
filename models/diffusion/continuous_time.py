@@ -197,7 +197,7 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         step_s: torch.Tensor,
         rng: List[torch.Generator] | torch.Generator | None = None,
         mode: Literal["ddpm", "ddim"] = "ddpm",
-        eta: float = 0.0,
+        ddim_eta: float = 0.0,
     ) -> torch.Tensor:
         # reverse diffusion process p(zs|zt) where 0<s<t<1
         log_snr_t = self.log_snr(step_t)
@@ -218,19 +218,15 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         if mode == "ddpm":
             c = -expm1(log_snr_t - log_snr_s)
             mean = alpha_s * (x_t * (1 - c) / alpha_t + c * x_0)
-            var = sigma_s.pow(2) * c
-            var_noise = self.randn_like(x_t, rng=rng)
-            var_noise[step_t == 0] = 0
-            x_s = mean + var.sqrt() * var_noise
+            std = sigma_s * c.sqrt()
+            noise = self.randn_like(x_t, rng=rng)
+            x_s = mean + std * noise
         elif mode == "ddim":
-            std_dev = eta * sigma_s / sigma_t * (1 - alpha_t**2 / alpha_s**2).sqrt()
+            c_1 = ddim_eta * sigma_s / sigma_t * (1 - alpha_t**2 / alpha_s**2).sqrt()
+            c_2 = (1 - alpha_s**2 - c_1**2).sqrt()
             eps = (x_t - alpha_t * x_0) / sigma_t
-            x_s_dir = (1 - alpha_s**2 - std_dev**2).sqrt() * eps
-            x_s = alpha_s * x_0 + x_s_dir
-            if eta > 0:
-                var_noise = self.randn_like(x_t, rng=rng)
-                var_noise[step_t == 0] = 0
-                x_s = x_s + std_dev * var_noise
+            noise = self.randn_like(x_t, rng=rng)
+            x_s = alpha_s * x_0 + c_1 * noise + c_2 * eps
         else:
             raise ValueError(f"invalid mode {mode}")
         return x_s
@@ -244,17 +240,19 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
         rng: list[torch.Generator] | torch.Generator | None = None,
         return_all: bool = False,
         mode: Literal["ddpm", "ddim"] = "ddpm",
+        ddim_eta: float = 0.0,
     ):
         x = self.randn(batch_size, *self.sampling_shape, rng=rng, device=self.device)
         if return_all:
             out = [x]
         steps = torch.linspace(1.0, 0.0, num_steps + 1, device=self.device)
         steps = steps[None].repeat_interleave(batch_size, dim=0)
+        p_step_kwargs = dict(rng=rng, mode=mode, ddim_eta=ddim_eta)
         tqdm_kwargs = dict(desc="sampling", leave=False, disable=not progress)
         for i in tqdm(range(num_steps), **tqdm_kwargs):
             step_t = steps[:, i]
             step_s = steps[:, i + 1]
-            x = self.p_step(x, step_t, step_s, rng=rng, mode=mode)
+            x = self.p_step(x, step_t, step_s, **p_step_kwargs)
             if return_all:
                 out.append(x)
         return torch.stack(out) if return_all else x

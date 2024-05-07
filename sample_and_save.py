@@ -71,6 +71,7 @@ def sample(args):
             samples = sample_fn(
                 batch_size=len(seeds),
                 num_steps=args.num_steps,
+                mode=args.mode,
                 rng=utils.inference.setup_rng(seeds.cpu().tolist(), device=device),
                 progress=False,
             ).clamp(-1, 1)
@@ -89,5 +90,6 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_samples", type=int, default=10_000)
     parser.add_argument("--num_steps", type=int, default=256)
+    parser.add_argument("--mode", choices=["ddpm", "ddim"], default="ddpm")
     args = parser.parse_args()
     sample(args)
