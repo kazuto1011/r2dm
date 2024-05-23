@@ -9,16 +9,20 @@ R2DM is a denoising diffusion probabilistic model (DDPM) for LiDAR range/reflect
 ICRA 2024<br>
 [project](https://kazuto1011.github.io/r2dm) | [arxiv](https://arxiv.org/abs/2309.09256) | [online demo](https://huggingface.co/spaces/kazuto1011/r2dm)
 
-**Quick demo:**
+## Quick demo
+
+Python denpendencies:
 
 ```sh
 pip install torch torchvision einops tqdm pydantic
 ```
 
+Unconditional generation using the pre-trained model:
+
 ```py
 import torch
 
-# Setup our pre-trained model & sampling
+# Sampling
 r2dm, lidar_utils, cfg = torch.hub.load("kazuto1011/r2dm", "pretrained_r2dm", device="cuda")
 lidar_image = r2dm.sample(batch_size=1, num_steps=256)  # (batch size, 2, height, width)
 
@@ -101,11 +105,12 @@ python completion_demo.py --ckpt $CHECKPOINT_PATH
 If you find this code useful for your research, please cite our paper:
 
 ```bibtex
-@article{nakashima2023lidar,
-    title   = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
-    author  = {Kazuto Nakashima and Ryo Kurazume},
-    year    = 2023,
-    journal = {arXiv:2309.09256}
+@inproceedings{nakashima2024lidar,
+    title     = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
+    author    = {Kazuto Nakashima and Ryo Kurazume},
+    year      = 2024,
+    booktitle = {Proceedings of the International Conference on Robotics and Automation (ICRA)},
+    pages     = {14724--14731}
 }
 ```
 
