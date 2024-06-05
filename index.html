@@ -23,28 +23,11 @@
       referrerpolicy="no-referrer" />
     <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 
-    <link rel="stylesheet" href="touch-image-comparison-slider/cndk.beforeafter.css" />
-    <script src="touch-image-comparison-slider/cndk.beforeafter.js"></script>
-
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,200;0,400;0,700;1,200;1,400;1,700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,200;0,400;0,700;1,200;1,400;1,700&display=swap" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="css/main.css" />
-    <link rel="stylesheet" type="text/css" href="css/cndk.beforeafter.css" />
-
-    <script>
-      $(document).ready(function () {
-        $(".beforeafterdefault").cndkbeforeafter();
-        $(".beforeafterautoslide").cndkbeforeafter({
-          autoSliding: true,
-          hoverEffect: false,
-          theme: "dark",
-          seperatorWidth: "0px",
-        });
-      });
-    </script>
 
     <script async src="https://www.googletagmanager.com/gtag/js?id=UA-79606002-1"></script>
     <script>
@@ -78,14 +61,22 @@
         <a href="https://arxiv.org/abs/2309.09256" class="btn btn-primary"><i class="fa-solid fa-file-pdf"></i> Paper</a>
         <a href="https://github.com/kazuto1011/r2dm" class="btn btn-primary"><i class="fa-brands fa-github"></i> Code</a>
         <a href="https://huggingface.co/spaces/kazuto1011/r2dm" class="btn btn-primary"><i class="fa-solid fa-play"></i> Demo</a>
+        <a href="https://kazuto1011.github.io/docs/slides/nakashima2024lidar_oral.pdf" class="btn btn-primary"
+          ><i class="fa-solid fa-file-powerpoint"></i> Slide</a
+        >
+        <a href="https://kazuto1011.github.io/docs/posters/nakashima2024lidar.pdf" class="btn btn-primary"
+          ><i class="fa-solid fa-image"></i> Poster</a
+        >
       </div>
     </div>
 
     <div class="container content">
-      <h5 style="text-align: center">TL;DR: A diffusion model for LiDAR data generation, named <b>R2DM</b></h5>
-      <video autoplay muted loop playsinline>
-        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/8810d656-c89e-48ea-84a1-e2bada25c408" type="video/mp4" />
-      </video>
+      <h5 style="text-align: center">TL;DR: A diffusion model for LiDAR data generation & completion, named <b>R2DM</b></h5>
+      <div class="video-container">
+        <video autoplay muted loop playsinline>
+          <source src="https://github.com/kazuto1011/r2dm/assets/9032347/8810d656-c89e-48ea-84a1-e2bada25c408" type="video/mp4" />
+        </video>
+      </div>
     </div>
 
     <div class="container content">
@@ -94,54 +85,80 @@
         Generative modeling of 3D LiDAR data is an emerging task with promising applications for autonomous mobile robots, such as scalable
         simulation, scene manipulation, and sparse-to-dense completion of LiDAR point clouds. While existing approaches have demonstrated the
         feasibility of image-based LiDAR data generation using deep generative models, they still struggle with fidelity and training stability. In
-        this work, we present R2DM, a novel generative model for LiDAR data that can generate diverse and high-fidelity 3D scene point clouds based on
-        the image representation of range and reflectance intensity. Our method is built upon denoising diffusion probabilistic models (DDPMs), which
-        have shown impressive results among generative model frameworks in recent years. To effectively train DDPMs in the LiDAR domain, we first
-        conduct an in-depth analysis of data representation, loss functions, and spatial inductive biases. Leveraging our R2DM model, we also
-        introduce a flexible LiDAR completion pipeline based on the powerful capabilities of DDPMs. We demonstrate that our method surpasses existing
-        methods in generating tasks on the KITTI-360 and KITTI-Raw datasets, as well as in the completion task on the KITTI-360 dataset.
+        this work, we present <b>R2DM</b>, a novel generative model for LiDAR data that can generate diverse and high-fidelity 3D scene point clouds
+        based on the image representation of range and reflectance intensity. Our method is built upon denoising diffusion probabilistic models
+        (DDPMs), which have shown impressive results among generative model frameworks in recent years. To effectively train DDPMs in the LiDAR
+        domain, we first conduct an in-depth analysis of data representation, loss functions, and spatial inductive biases. Leveraging our R2DM model,
+        we also introduce a flexible LiDAR completion pipeline based on the powerful capabilities of DDPMs. We demonstrate that our method surpasses
+        existing methods in generating tasks on the KITTI-360 and KITTI-Raw datasets, as well as in the completion task on the KITTI-360 dataset.
       </p>
     </div>
 
     <div class="container content">
-      <h2>Overview Video</h2>
-      <video playsinline controls style="border-radius: 15px">
-        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/080742c1-7828-4ea5-b635-92a718f78c33" type="video/mp4" />
-      </video>
-    </div>
-
-    <div class="container content">
       <h2>Approach</h2>
-      We cast our task as 360° image generation and trained LiDAR range & reflectance images with our modified DDPM.
+
+      1. We build a denoising diffusion probabilistic model (DDPM) <span class="reference" data-ref="ho2020">[Ho et al. 2020]</span> on the
+      equirectangular image representation with two channels: range and reflectance intensity. Each diffusion step is indexed by continuous time
+      <span class="reference" data-ref="kingma2021">[Kingma et al. 2021]</span> so that the number of sampling steps is adjustable according to the
+      computational tradeoff.
+
       <video autoplay muted loop playsinline>
-        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/4150262a-3770-41b9-8d92-bb272d196310" type="video/mp4" />
+        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/dc33bb62-6f75-402d-8ea3-9ec93ec73c98" type="video/mp4" />
+      </video>
+
+      2. For the reverse diffusion, Efficient U-Net <span class="reference" data-ref="saharia2022">[Saharia et al. 2022]</span> is trained to
+      recursively denoise the latent variables z, conditioned by the beam angle-based spatial bias and the scheduled signal-to-noise ratio (SNR).
+
+      <img src="https://github.com/kazuto1011/r2dm/assets/9032347/c9387ebc-785f-4a35-9bbb-bfb009f2aeee" />
+
+      3. Trained R2DM can be used for sparse-to-dense LiDAR completion without task-specific re-training. We adopt the DDPM-based image inpainting
+      technique, RePaint <span class="reference" data-ref="lugmayr2022">[Lugmayr et al. 2022]</span>.
+
+      <video autoplay muted loop playsinline>
+        <source src="https://github.com/kazuto1011/r2dm/assets/9032347/df120839-ea7d-48fd-a546-a84a20d55be4" type="video/mp4" />
       </video>
     </div>
 
     <div class="container content">
-      <h2>Generation</h2>
-      R2DM can generate diverse and high-fidelity 3D scene point clouds based on the image representation.
+      <h2>Results</h2>
+
+      <h3>Unconditional generation</h3>
+      We trained R2DM on the <span class="reference" data-ref="liao2022">KITTI-360</span> dataset and performed a 256-step DDPM sampling.
       <video autoplay muted loop playsinline>
         <source src="https://github.com/kazuto1011/r2dm/assets/9032347/cd29db85-2196-4bf2-8fb6-a728d8b5baca" type="video/mp4" />
       </video>
-    </div>
 
-    <div class="container content">More demos will be added soon!</div>
-    <!--
-    <div class="container content">
-      <h2>Completion</h2>
-      By using the resampling techniques, R2DM can be used for sparse-to-dense completion of LiDAR point clouds.
+      <h3>Sparse-to-dense completion</h3>
+      We used the pre-trained R2DM and performed the <span class="reference" data-ref="lugmayr2022">RePaint</span>-based completion.
+
+      <div style="display: flex; justify-content: center">
+        <div class="video-compare">
+          <video id="video-left" src="https://github.com/kazuto1011/r2dm/assets/9032347/7f10dc19-4b27-4218-a44b-15db170e11b5" muted></video>
+          <video id="video-right" src="https://github.com/kazuto1011/r2dm/assets/9032347/7e32ddc2-a42a-413b-8b82-2a25106c509e" muted></video>
+          <div id="slider"></div>
+        </div>
+        <div class="video-compare">
+          <video id="video-left" src="https://github.com/kazuto1011/r2dm/assets/9032347/e3201380-02e0-4c9c-845b-1b57ba0db885" muted></video>
+          <video id="video-right" src="https://github.com/kazuto1011/r2dm/assets/9032347/7e64b91d-a5f2-4495-bfd2-c0b9b37bc664" muted></video>
+          <div id="slider"></div>
+        </div>
+        <div class="video-compare">
+          <video id="video-left" src="https://github.com/kazuto1011/r2dm/assets/9032347/f7847fc4-5d3b-42a1-81c1-282cb44485d6" muted></video>
+          <video id="video-right" src="https://github.com/kazuto1011/r2dm/assets/9032347/5e9c2e44-3b43-4df5-a350-89990aa8ce21" muted></video>
+          <div id="slider"></div>
+        </div>
+      </div>
     </div>
-    -->
 
     <div class="container content">
       <h2>Citation</h2>
       <pre class="bibtex" style="text-align: left">
-<code>@article{nakashima2023lidar,
-    title   = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
-    author  = {Kazuto Nakashima and Ryo Kurazume},
-    year    = 2023,
-    journal = {arXiv:2309.09256}
+<code>@inproceedings{nakashima2024lidar,
+    title     = {LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models},
+    author    = {Kazuto Nakashima and Ryo Kurazume},
+    booktitle = {Proceedings of the IEEE International Conference on Robotics and Automation (ICRA)},
+    pages     = {14724--14731},
+    year      = 2024
 }</code></pre>
     </div>
 
@@ -149,9 +166,109 @@
       <h2>Acknowledgments</h2>
       <p>
         This work was supported by
-        <a href="https://kaken.nii.ac.jp/en/grant/KAKENHI-PROJECT-23K16974/" target="_blank" rel="noopener">JSPS KAKENHI Grant Number JP23K16974</a>
+        <span class="reference" data-ref="23K16974">JSPS KAKENHI Grant Number JP23K16974</span>
         and JST [Moonshot R&D] [Grant Number JPMJMS2032]
       </p>
     </div>
+
+    <div class="references-data">
+      <div id="ho2020">
+        <div id="bib">
+          <b>Denoising Diffusion Probabilistic Models</b><br />
+          Jonathan Ho, Ajay Jain, Pieter Abbeel<br />
+          NeurIPS 2020
+        </div>
+        <div id="paper_url">https://arxiv.org/abs/2006.11239</div>
+      </div>
+      <div id="kingma2021">
+        <div id="bib">
+          <b>Variational Diffusion Models</b><br />
+          Diederik P. Kingma, Tim Salimans, Ben Poole, Jonathan Ho<br />
+          NeurIPS 2021
+        </div>
+        <div id="paper_url">https://arxiv.org/abs/2107.00630</div>
+      </div>
+      <div id="saharia2022">
+        <div id="bib">
+          <b>Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding</b><br />
+          Chitwan Saharia, William Chan, Saurabh Saxena, Lala Li, Jay Whang, Emily Denton, Seyed Kamyar Seyed Ghasemipour, Burcu Karagol Ayan, S. Sara
+          Mahdavi, Rapha Gontijo Lopes, Tim Salimans, Jonathan Ho, David J Fleet, Mohammad Norouzi<br />
+          NeurIPS 2022
+        </div>
+        <div id="paper_url">https://arxiv.org/abs/2205.11487</div>
+      </div>
+      <div id="lugmayr2022">
+        <div id="bib">
+          <b>RePaint: Inpainting using Denoising Diffusion Probabilistic Models</b><br />
+          Andreas Lugmayr, Martin Danelljan, Andres Romero, Fisher Yu, Radu Timofte, Luc Van Gool<br />
+          CVPR 2022
+        </div>
+        <div id="paper_url">https://arxiv.org/abs/2201.09865</div>
+      </div>
+      <div id="liao2022">
+        <div id="bib">
+          <b>KITTI-360: A Novel Dataset and Benchmarks for Urban Scene Understanding in 2D and 3D</b><br />
+          Yiyi Liao, Jun Xie, Andreas Geiger<br />
+          TPAMI 2022
+        </div>
+        <div id="paper_url">https://arxiv.org/abs/2109.13410</div>
+      </div>
+      <div id="23K16974">
+        <div id="bib">
+          <b>Development of a Realistic LiDAR Simulator based on Deep Generative Models</b><br />
+          Kazuto Nakashima<br />
+          Grant-in-Aid for Early-Career Scientists,<br />
+          The Japan Society for the Promotion of Science (JSPS)
+        </div>
+        <div id="paper_url">https://kaken.nii.ac.jp/en/grant/KAKENHI-PROJECT-23K16974/</div>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", (event) => {
+        const references = document.querySelectorAll(".reference");
+        references.forEach((reference) => {
+          const refId = reference.getAttribute("data-ref");
+          const refElement = document.getElementById(refId);
+          const tooltip = document.createElement("span");
+          tooltip.className = "reference-tooltip";
+          tooltip.innerHTML = refElement.querySelector("#bib").innerHTML;
+          reference.appendChild(tooltip);
+          reference.addEventListener("click", () => {
+            const paperUrl = refElement.querySelector("#paper_url").innerHTML;
+            window.open(paperUrl, "_blank");
+          });
+        });
+
+        const videos = document.querySelectorAll(".video-compare");
+        videos.forEach((container) => {
+          const videoL = container.querySelector("#video-left");
+          const videoR = container.querySelector("#video-right");
+          const slider = container.querySelector("#slider");
+
+          videoL.play();
+          videoR.play();
+          videoL.addEventListener("ended", () => {
+            videoL.currentTime = 0;
+            videoR.currentTime = 0;
+            videoL.play();
+            videoR.play();
+          });
+
+          function moveSlider(e) {
+            const rect = container.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const width = rect.width;
+            const percentage = (x / width) * 100;
+            slider.style.left = `${percentage}%`;
+            videoL.style.clipPath = `inset(0 ${100 - percentage}% 0 0)`;
+          }
+
+          container.addEventListener("mousemove", moveSlider);
+          container.addEventListener("touchstart", moveSlider);
+          container.addEventListener("touchmove", moveSlider);
+        });
+      });
+    </script>
   </body>
 </html>
