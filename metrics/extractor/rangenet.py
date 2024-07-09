@@ -13,13 +13,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
+import yaml
+
+# =================================================================================
+# RangeNet main classes
+# =================================================================================
 
 
-def _count_in_ch(inputs: tuple[str]):
+def _count_in_ch(modalities: tuple[str]):
     channels = {"xyz": 3, "range": 1, "remission": 1, "mask": 1}
     in_ch = 0
-    for modality in inputs:
-        in_ch += channels[modality]
+    for modality, enabled in modalities.items():
+        if enabled:
+            in_ch += channels[modality]
     return in_ch
 
 
@@ -162,11 +168,18 @@ class RangeNet(nn.Module):
         h = self.dec1(h) + h0.detach()
         if feature == "lidargen":
             return self.flatten_and_subsample(h)
+        elif feature == "decoder":
+            return h
         logit = self.head(self.dropout2(h))
         return logit
 
     def extra_repr(self):
         return f"inputs={self.inputs}"
+
+
+# =================================================================================
+# kNN and CRF-RNN post-processors
+# =================================================================================
 
 
 def _get_gaussian_kernel(kernel_size: int, sigma: float, device="cpu") -> torch.Tensor:
@@ -392,8 +405,13 @@ class CRFRNN(nn.Module):
         return Q
 
 
+# =================================================================================
+# Setup utilities
+# =================================================================================
+
+
 def _download_pretrained_weights(
-    arch: str,
+    url_or_file: str,
     progress: bool = True,
 ) -> OrderedDict[str, torch.Tensor]:
     def _translate_param_name(src_name) -> str:
@@ -434,16 +452,24 @@ def _download_pretrained_weights(
     os.makedirs(model_dir, exist_ok=True)
 
     # download the tar file
-    url = f"http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/models/{arch}.tar.gz"
-    parts = urlparse(url)
+    parts = urlparse(url_or_file)
     filename = os.path.basename(parts.path)
-    cached_file = os.path.join(model_dir, filename)
-    if not os.path.exists(cached_file):
-        sys.stderr.write('Downloading: "{}" to {}\n'.format(url, cached_file))
-        hash_prefix = None
-        torch.hub.download_url_to_file(url, cached_file, hash_prefix, progress=progress)
+    arch = filename.replace(".tar.gz", "")
+    if all([parts.scheme, parts.netloc]):
+        cached_file = os.path.join(model_dir, filename)
+        if not os.path.exists(cached_file):
+            sys.stderr.write(
+                'Downloading: "{}" to {}\n'.format(url_or_file, cached_file)
+            )
+            hash_prefix = None
+            torch.hub.download_url_to_file(
+                url_or_file, cached_file, hash_prefix, progress=progress
+            )
+    else:
+        cached_file = url_or_file
 
     # parse the downloaded tar file
+    arch_cfg = None
     state_dict = OrderedDict()
     with tarfile.open(cached_file, "r:gz") as tar:
         members = list(map(lambda m: m.name, tar.getmembers()))
@@ -451,31 +477,156 @@ def _download_pretrained_weights(
             f"{arch}/backbone",
             f"{arch}/segmentation_decoder",
             f"{arch}/segmentation_head",
+            f"{arch}/arch_cfg.yaml",
         ):
-            assert member in members
-            file = tar.extractfile(member)
-            _state_dict = torch.load(io.BytesIO(file.read()), map_location="cpu")
-            for name, params in _state_dict.items():
-                new_name = _translate_param_name(name)
-                assert new_name not in state_dict, new_name
-                state_dict[new_name] = params.cpu()
-    return state_dict
+            assert member in members, member
+            stream = io.BytesIO(tar.extractfile(member).read())
+            if ".yaml" in member:
+                arch_cfg = yaml.safe_load(stream)
+            else:
+                _state_dict = torch.load(stream, map_location="cpu")
+                for name, params in _state_dict.items():
+                    new_name = _translate_param_name(name)
+                    assert new_name not in state_dict, new_name
+                    state_dict[new_name] = params.cpu()
+
+    inputs = arch_cfg["backbone"]["input_depth"]
+    in_channels = _count_in_ch(inputs)
+    num_classes = state_dict["head.1.bias"].shape[0]
+    backbone = arch_cfg["backbone"]["extra"]["layers"]
+    mean = arch_cfg["dataset"]["sensor"]["img_means"][:in_channels]
+    std = arch_cfg["dataset"]["sensor"]["img_stds"][:in_channels]
+
+    return (
+        state_dict,
+        Preprocess(mean=mean, std=std),
+        dict(
+            inputs=inputs,
+            num_classes=num_classes,
+            backbone=backbone,
+        ),
+    )
 
 
 class Preprocess(nn.Module):
-    def __init__(self):
+    def __init__(self, mean=None, std=None):
         super().__init__()
-        self.transforms = torchvision.transforms.Normalize(
-            # range, x, y, z, remission
-            mean=[12.12, 10.88, 0.23, -1.04, 0.21],
-            std=[12.32, 11.47, 6.91, 0.86, 0.16],
-        )
+        # (range, x, y, z, remission) order
+        if mean is None:
+            mean = [12.12, 10.88, 0.23, -1.04, 0.21]
+        if std is None:
+            std = [12.32, 11.47, 6.91, 0.86, 0.16]
+        assert len(mean) == len(std)
+        self.num_channels = len(mean)
+        self.transforms = torchvision.transforms.Normalize(mean=mean, std=std)
 
-    def forward(self, img: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        assert img.ndim == mask.ndim == 4
-        assert img.shape[1] == 5
+    def forward(self, img: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        assert img.ndim == 4
+        assert img.shape[1] == self.num_channels
+        if mask is None:
+            mask = (img[:, [0]] > 0).float()
+        assert mask.ndim == 4
         return self.transforms(img) * mask
 
+
+def _get_rangenet_official_url(key: str) -> str:
+    return f"http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/models/{key}.tar.gz"
+
+
+_URLs = {
+    21: {
+        "SemanticKITTI_64x2048": _get_rangenet_official_url("darknet21"),
+    },
+    53: {
+        "SemanticKITTI_64x2048": _get_rangenet_official_url("darknet53"),
+        "SemanticKITTI_64x1024": _get_rangenet_official_url("darknet53-1024"),
+        "SemanticKITTI_64x512": _get_rangenet_official_url("darknet53-512"),
+    },
+}
+
+
+def build_rangenet(
+    url_or_file: str | None,
+    compile: bool = False,
+    device: str = "cpu",
+    **user_cfg: Any,
+) -> tuple[nn.Module, nn.Module]:
+    """Build RangeNet from remote/local weights."""
+    if url_or_file is not None:
+        state_dict, preprocess, loaded_cfg = _download_pretrained_weights(url_or_file)
+        preprocess.to(device)
+    else:
+        state_dict, preprocess, loaded_cfg = None, None, dict()
+    model = RangeNet(**loaded_cfg, **user_cfg)
+    model.to(device)
+    if state_dict is not None:
+        model.load_state_dict(state_dict, strict=True)
+        model.eval().requires_grad_(False)
+    if compile:
+        model = torch.compile(model)
+    return model, preprocess
+
+
+def rangenet21(
+    weights: Literal["SemanticKITTI_64x2048", None] = None,
+    compile: bool = False,
+    device: str = "cpu",
+    **user_cfg: Any,
+) -> tuple[nn.Module, nn.Module]:
+    """RangeNet with Darknet21 backbone from `RangeNet++: Fast and Accurate LiDAR Semantic Segmentation`."""
+    if weights is not None:
+        url_or_file = _URLs[21][weights]
+    else:
+        url_or_file = None
+        user_cfg["backbone"] = 21
+    return build_rangenet(
+        url_or_file=url_or_file,
+        compile=compile,
+        device=device,
+        **user_cfg,
+    )
+
+
+def rangenet53(
+    weights: Literal[
+        "SemanticKITTI_64x2048",
+        "SemanticKITTI_64x1024",
+        "SemanticKITTI_64x512",
+        None,
+    ] = None,
+    compile: bool = False,
+    device: str = "cpu",
+    **user_cfg: Any,
+) -> tuple[nn.Module, nn.Module]:
+    """RangeNet with Darknet53 backbone from `RangeNet++: Fast and Accurate LiDAR Semantic Segmentation`."""
+    if weights is not None:
+        url_or_file = _URLs[53][weights]
+    else:
+        url_or_file = None
+        user_cfg["backbone"] = 53
+    return build_rangenet(
+        url_or_file=url_or_file,
+        compile=compile,
+        device=device,
+        **user_cfg,
+    )
+
+
+def knn(num_classes: int, **kwargs: Any) -> kNN:
+    """kNN post-processor from `RangeNet++: Fast and Accurate LiDAR Semantic Segmentation`."""
+    postprocess = kNN(num_classes=num_classes, **kwargs)
+    return postprocess
+
+
+def crf_rnn(num_classes: int, **kwargs: Any) -> CRFRNN:
+    """CRF-RNN post-processor from `Conditional Random Fields as Recurrent Neural Networks`."""
+    postprocess = CRFRNN(num_classes=num_classes, **kwargs)
+    return postprocess
+
+
+# =================================================================================
+# Visualization utilities
+# =================================================================================
 
 _ID2LABEL = {
     0: "unlabeled",
@@ -499,100 +650,6 @@ _ID2LABEL = {
     18: "pole",
     19: "traffic-sign",
 }
-
-
-def _build_model(
-    inputs: tuple[str],
-    num_classes: int,
-    backbone: int,
-    weights: str | None,
-    compile: bool,
-    device: str = "cpu",
-    **kwargs: Any,
-) -> tuple[nn.Module, nn.Module]:
-    model = RangeNet(
-        inputs=inputs,
-        num_classes=num_classes,
-        backbone=backbone,
-        **kwargs,
-    )
-    if weights is not None:
-        state_dict = _download_pretrained_weights(weights)
-        model.load_state_dict(state_dict, strict=True)
-        model.eval().requires_grad_(False)
-    preprocess = Preprocess()
-    if compile:
-        model = torch.compile(model)
-        preprocess = torch.compile(preprocess)
-    return model.to(device), preprocess.to(device)
-
-
-def rangenet21(
-    weights: str | None = None,
-    compile: bool = False,
-    device: str = "cpu",
-    **kwargs: Any,
-) -> tuple[nn.Module, nn.Module]:
-    """RangeNet with Darknet21 backbone from `RangeNet++: Fast and Accurate LiDAR Semantic Segmentation`."""
-    base_kwargs = {
-        "SemanticKITTI_64x2048": {
-            "inputs": ["range", "xyz", "remission"],
-            "num_classes": 20,
-            "backbone": 21,
-            "weights": "darknet21",
-        },
-        None: {
-            "backbone": 21,
-            "weights": None,
-        },
-    }[weights]
-    return _build_model(compile=compile, device=device, **base_kwargs, **kwargs)
-
-
-def rangenet53(
-    weights: str | None = None,
-    compile: bool = False,
-    device: str = "cpu",
-    **kwargs: Any,
-) -> tuple[nn.Module, nn.Module]:
-    """RangeNet with Darknet53 backbone from `RangeNet++: Fast and Accurate LiDAR Semantic Segmentation`."""
-    base_kwargs = {
-        "SemanticKITTI_64x2048": {
-            "inputs": ["range", "xyz", "remission"],
-            "num_classes": 20,
-            "backbone": 53,
-            "weights": "darknet53",
-        },
-        "SemanticKITTI_64x1024": {
-            "inputs": ["range", "xyz", "remission"],
-            "num_classes": 20,
-            "backbone": 53,
-            "weights": "darknet53-1024",
-        },
-        "SemanticKITTI_64x512": {
-            "inputs": ["range", "xyz", "remission"],
-            "num_classes": 20,
-            "backbone": 53,
-            "weights": "darknet53-512",
-        },
-        None: {
-            "backbone": 53,
-            "weights": None,
-        },
-    }[weights]
-    return _build_model(compile=compile, device=device, **base_kwargs, **kwargs)
-
-
-def knn(num_classes: int, **kwargs: Any) -> kNN:
-    """kNN post-processor from `RangeNet++: Fast and Accurate LiDAR Semantic Segmentation`."""
-    postprocess = kNN(num_classes=num_classes, **kwargs)
-    return postprocess
-
-
-def crf_rnn(num_classes: int, **kwargs: Any) -> CRFRNN:
-    """CRF-RNN post-processor from `Conditional Random Fields as Recurrent Neural Networks`."""
-    postprocess = CRFRNN(num_classes=num_classes, **kwargs)
-    return postprocess
 
 
 def make_semantickitti_cmap():

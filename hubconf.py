@@ -1,5 +1,6 @@
 from torch.hub import load_state_dict_from_url
 
+from metrics.extractor.rangenet import build_rangenet as _build_rangenet
 from metrics.extractor.rangenet import crf_rnn as _crf_rnn
 from metrics.extractor.rangenet import knn as _knn
 from metrics.extractor.rangenet import rangenet21 as _rangenet21
@@ -13,7 +14,7 @@ dependencies = ["torch", "torchvision", "numpy", "einops", "tqdm", "pydantic"]
 # =================================================================================
 
 
-def _get_url(key: str) -> str:
+def _get_r2dm_url(key: str) -> str:
     return f"https://github.com/kazuto1011/r2dm/releases/download/weights/{key}.pth"
 
 
@@ -31,7 +32,7 @@ def pretrained_r2dm(config: str = "r2dm-h-kitti360-300k", ckpt: str = None, **kw
         tuple: A tuple of the model, LiDAR utilities, and a configuration dict.
     """
     if ckpt is None:
-        ckpt = load_state_dict_from_url(_get_url(config), map_location="cpu")
+        ckpt = load_state_dict_from_url(_get_r2dm_url(config), map_location="cpu")
     ddpm, lidar_utils, cfg = _setup_model(ckpt, **kwargs)
     return ddpm, lidar_utils, cfg
 
@@ -39,6 +40,20 @@ def pretrained_r2dm(config: str = "r2dm-h-kitti360-300k", ckpt: str = None, **kw
 # =================================================================================
 # Bonus! RangeNet++ ported from https://github.com/PRBonn/lidar-bonnetal
 # =================================================================================
+
+
+def rangenet(url_or_file: str, **kwargs):
+    """
+    Dynamic building of RangeNet-21/53
+
+    Args:
+        url_or_file (str): URL or local path to the checkpoint file (*.tar.gz).
+
+    Returns:
+        tuple: A tuple of the model and a preprocessing function.
+    """
+    model, preprocess = _build_rangenet(url_or_file, **kwargs)
+    return model, preprocess
 
 
 def rangenet21(weights: str = "SemanticKITTI_64x2048", **kwargs):
