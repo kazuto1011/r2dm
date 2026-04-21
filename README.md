@@ -14,7 +14,7 @@ ICRA 2024<br>
 Python denpendencies:
 
 ```sh
-pip install torch torchvision einops tqdm pydantic
+pip install torch torchvision einops tqdm pydantic pyyaml
 ```
 
 Unconditional generation using the pre-trained model:
