@@ -17,24 +17,24 @@ from simple_parsing import ArgumentParser
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-import utils.inference
-import utils.option
-import utils.render
-import utils.training
-from models.diffusion import (
+import r2dm.utils.inference
+import r2dm.utils.option
+import r2dm.utils.render
+import r2dm.utils.training
+from r2dm.models.diffusion import (
     ContinuousTimeGaussianDiffusion,
     DiscreteTimeGaussianDiffusion,
 )
-from models.efficient_unet import EfficientUNet
-from models.refinenet import LiDARGenRefineNet
-from utils.lidar import LiDARUtility, get_hdl64e_linear_ray_angles
+from r2dm.models.efficient_unet import EfficientUNet
+from r2dm.models.refinenet import LiDARGenRefineNet
+from r2dm.utils.lidar import LiDARUtility, get_hdl64e_linear_ray_angles
 
 warnings.filterwarnings("ignore", category=UserWarning)
 torch._dynamo.config.suppress_errors = True
 torch._dynamo.config.automatic_dynamic_shapes = False
 
 
-def train(cfg: utils.option.Config):
+def train(cfg: r2dm.utils.option.Config):
     torch.backends.cudnn.benchmark = True
     project_dir = Path(cfg.training.output_dir) / cfg.data.dataset / cfg.data.projection
 
@@ -109,7 +109,7 @@ def train(cfg: utils.option.Config):
         raise ValueError(f"Unknown: {cfg.data.projection}")
 
     if accelerator.is_main_process:
-        print(f"number of parameters: {utils.inference.count_parameters(model):,}")
+        print(f"number of parameters: {r2dm.utils.inference.count_parameters(model):,}")
 
     if cfg.diffusion.timestep_type == "discrete":
         ddpm = DiscreteTimeGaussianDiffusion(
@@ -223,25 +223,25 @@ def train(cfg: utils.option.Config):
         out = dict()
         depth, rflct = split_channels(image)
         if depth.numel() > 0:
-            out[f"{tag}/depth"] = utils.render.colorize(depth)
+            out[f"{tag}/depth"] = r2dm.utils.render.colorize(depth)
             metric = lidar_utils.revert_depth(depth)
             mask = (metric > lidar_utils.min_depth) & (metric < lidar_utils.max_depth)
-            out[f"{tag}/depth/orig"] = utils.render.colorize(
+            out[f"{tag}/depth/orig"] = r2dm.utils.render.colorize(
                 metric / lidar_utils.max_depth
             )
             xyz = lidar_utils.to_xyz(metric) / lidar_utils.max_depth * mask
-            normal = -utils.render.estimate_surface_normal(xyz)
+            normal = -r2dm.utils.render.estimate_surface_normal(xyz)
             normal = lidar_utils.denormalize(normal)
-            bev = utils.render.render_point_clouds(
+            bev = r2dm.utils.render.render_point_clouds(
                 points=einops.rearrange(xyz, "B C H W -> B (H W) C"),
                 colors=einops.rearrange(normal, "B C H W -> B (H W) C"),
                 t=torch.tensor([0, 0, 1.0]).to(xyz),
             )
             out[f"{tag}/bev"] = bev.mul(255).clamp(0, 255).byte()
         if rflct.numel() > 0:
-            out[f"{tag}/reflectance"] = utils.render.colorize(rflct, cm.plasma)
+            out[f"{tag}/reflectance"] = r2dm.utils.render.colorize(rflct, cm.plasma)
         if mask.numel() > 0:
-            out[f"{tag}/mask"] = utils.render.colorize(mask, cm.binary_r)
+            out[f"{tag}/mask"] = r2dm.utils.render.colorize(mask, cm.binary_r)
         tracker.log_images(out, step=global_step)
 
     # =================================================================================
@@ -314,5 +314,5 @@ def train(cfg: utils.option.Config):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_arguments(utils.option.Config, dest="cfg")
+    parser.add_arguments(r2dm.utils.option.Config, dest="cfg")
     train(parser.parse_args().cfg)

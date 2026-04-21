@@ -13,9 +13,9 @@ from rich import print
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-import utils.inference
-from metrics import bev, distribution
-from metrics.extractor import pointnet, rangenet
+import r2dm.utils.inference
+from r2dm.metrics import bev, distribution
+from r2dm.metrics.extractor import pointnet, rangenet
 
 # from LiDARGen
 MAX_DEPTH = 63.0
@@ -49,7 +49,7 @@ def evaluate(args):
     torch.set_float32_matmul_precision("high")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    _, lidar_utils, cfg = utils.inference.setup_model(args.ckpt, device=device)
+    _, lidar_utils, cfg = r2dm.utils.inference.setup_model(args.ckpt, device=device)
     lidar_utils.to(device)
 
     H, W = lidar_utils.resolution

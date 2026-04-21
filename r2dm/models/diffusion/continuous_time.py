@@ -4,7 +4,6 @@ from typing import List, Literal
 
 import torch
 from torch import nn
-from torch.cuda.amp import autocast
 from torch.special import expm1
 from tqdm.auto import tqdm
 
@@ -166,7 +165,7 @@ class ContinuousTimeGaussianDiffusion(base.GaussianDiffusion):
             raise ValueError(f"invalid objective {self.objective}")
         return loss_weight
 
-    @autocast(enabled=False)
+    @torch.amp.autocast("cuda", enabled=False)
     def q_step_from_x_0(self, x_0, step_t, rng=None):
         # forward diffusion process q(zt|x0) where 0<t<1
         noise = self.randn_like(x_0, rng=rng)

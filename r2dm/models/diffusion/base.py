@@ -3,7 +3,6 @@ from typing import List, Literal
 import einops
 import torch
 from torch import nn
-from torch.cuda.amp import autocast
 
 
 class GaussianDiffusion(nn.Module):
@@ -108,7 +107,7 @@ class GaussianDiffusion(nn.Module):
     def get_loss_weight(self, steps):
         raise NotImplementedError
 
-    @autocast(enabled=False)
+    @torch.amp.autocast("cuda", enabled=False)
     def q_step_from_x_0(self, x_0, steps, rng):
         raise NotImplementedError
 

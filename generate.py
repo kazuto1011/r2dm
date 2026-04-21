@@ -9,8 +9,8 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid, save_image
 from tqdm.auto import tqdm
 
-import utils.inference
-import utils.render
+import r2dm.utils.inference
+import r2dm.utils.render
 
 
 def main(args):
@@ -21,7 +21,9 @@ def main(args):
     # Load pre-trained model
     # =================================================================================
 
-    ddpm, lidar_utils, _ = utils.inference.setup_model(args.ckpt, device=args.device)
+    ddpm, lidar_utils, _ = r2dm.utils.inference.setup_model(
+        args.ckpt, device=args.device
+    )
 
     # =================================================================================
     # Sampling (reverse diffusion)
@@ -43,14 +45,14 @@ def main(args):
 
     def render(x):
         img = einops.rearrange(x, "B C H W -> B 1 (C H) W")
-        img = utils.render.colorize(img) / 255
+        img = r2dm.utils.render.colorize(img) / 255
         xyz = lidar_utils.to_xyz(x[:, [0]] * lidar_utils.max_depth)
         xyz /= lidar_utils.max_depth
         z_min, z_max = -2 / lidar_utils.max_depth, 0.5 / lidar_utils.max_depth
         z = (xyz[:, [2]] - z_min) / (z_max - z_min)
-        colors = utils.render.colorize(z.clamp(0, 1), cm.viridis) / 255
-        R, t = utils.render.make_Rt(pitch=torch.pi / 3, yaw=torch.pi / 4, z=0.8)
-        bev = 1 - utils.render.render_point_clouds(
+        colors = r2dm.utils.render.colorize(z.clamp(0, 1), cm.viridis) / 255
+        R, t = r2dm.utils.render.make_Rt(pitch=torch.pi / 3, yaw=torch.pi / 4, z=0.8)
+        bev = 1 - r2dm.utils.render.render_point_clouds(
             points=einops.rearrange(xyz, "B C H W -> B (H W) C"),
             colors=1 - einops.rearrange(colors, "B C H W -> B (H W) C"),
             R=R.to(xyz),

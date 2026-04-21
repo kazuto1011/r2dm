@@ -1,11 +1,11 @@
 from torch.hub import load_state_dict_from_url
 
-from metrics.extractor.rangenet import build_rangenet as _build_rangenet
-from metrics.extractor.rangenet import crf_rnn as _crf_rnn
-from metrics.extractor.rangenet import knn as _knn
-from metrics.extractor.rangenet import rangenet21 as _rangenet21
-from metrics.extractor.rangenet import rangenet53 as _rangenet53
-from utils.inference import setup_model as _setup_model
+from r2dm.metrics.extractor.rangenet import build_rangenet as _build_rangenet
+from r2dm.metrics.extractor.rangenet import crf_rnn as _crf_rnn
+from r2dm.metrics.extractor.rangenet import knn as _knn
+from r2dm.metrics.extractor.rangenet import rangenet21 as _rangenet21
+from r2dm.metrics.extractor.rangenet import rangenet53 as _rangenet53
+from r2dm.utils.inference import setup_model as _setup_model
 
 dependencies = ["torch", "torchvision", "numpy", "einops", "tqdm", "pydantic"]
 

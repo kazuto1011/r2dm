@@ -37,14 +37,12 @@ point_cloud = lidar_utils.to_xyz(range_image)  # Point cloud
 
 ### Python & CUDA
 
-w/ [conda](https://docs.conda.io/projects/miniconda/en/latest/) framework:
+w/ [uv](https://docs.astral.sh/uv/) framework:
 
 ```sh
-conda env create -f environment.yaml
-conda activate r2dm
+uv sync
+source .venv/bin/activate
 ```
-
-If you are stuck with an endless installation, [try `libmamba` for the conda solver](https://www.anaconda.com/blog/a-faster-conda-for-a-growing-community).
 
 ### Dataset
 

@@ -1,0 +1,31 @@
+[project]
+name = "r2dm"
+version = "0.1.0"
+description = "LiDAR Data Synthesis with Denoising Diffusion Probabilistic Models (ICRA 2024)"
+readme = "README.md"
+requires-python = "==3.10.*"
+dependencies = [
+    "accelerate==0.22.0",
+    "datasets==2.16.0",
+    "einops==0.6.1",
+    "ema-pytorch==0.7.9",
+    "imageio==2.34.0",
+    "imageio-ffmpeg==0.4.9",
+    "joblib==1.5.3",
+    "kornia==0.7.0",
+    "matplotlib==3.7.1",
+    "numba==0.57.0",
+    "pydantic==2.6.3",
+    "rich==13.5.1",
+    "scipy==1.11.1",
+    "simple-parsing==0.1.5",
+    "tensorboard==2.14.0",
+    "torch==2.1.0",
+    "torchvision==0.16.0",
+    "tqdm==4.66.1",
+]
+
+[tool.uv]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]

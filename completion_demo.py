@@ -10,9 +10,9 @@ import torch
 import torch.nn.functional as F
 from rich import print
 
-import utils.inference
-import utils.render
-from metrics.extractor import rangenet
+import r2dm.utils.inference
+import r2dm.utils.render
+from r2dm.metrics.extractor import rangenet
 
 
 def main(args):
@@ -27,7 +27,7 @@ def main(args):
     # Prepare pre-trained models
     # =================================================================================
 
-    ddpm, lidar_utils, cfg = utils.inference.setup_model(args.ckpt, device=device)
+    ddpm, lidar_utils, cfg = r2dm.utils.inference.setup_model(args.ckpt, device=device)
 
     H, W = cfg.data.resolution
     semseg, preprocess = rangenet.rangenet53(
@@ -95,7 +95,7 @@ def main(args):
         num_steps=args.num_steps,
         num_resample_steps=args.num_resample_steps,
         jump_length=args.jump_length,
-        rng=utils.inference.setup_rng(range(batch_size), device=device),
+        rng=r2dm.utils.inference.setup_rng(range(batch_size), device=device),
     ).clamp(-1, 1)
 
     # =================================================================================
@@ -115,7 +115,7 @@ def main(args):
         return img.clamp(0, 1)
 
     def to_bev(x, colors=None):
-        R, t = utils.render.make_Rt(
+        R, t = r2dm.utils.render.make_Rt(
             pitch=torch.pi / 4, yaw=torch.pi / 4, z=0.6, device=x.device
         )
         depth = lidar_utils.revert_depth(lidar_utils.denormalize(x)[:, [0]])
@@ -123,10 +123,10 @@ def main(args):
         if colors is None:
             z_min, z_max = -2 / lidar_utils.max_depth, 0.5 / lidar_utils.max_depth
             z = (xyz[:, [2]] - z_min) / (z_max - z_min)
-            colors = utils.render.colorize(z.clamp(0, 1), cm.viridis) / 255
+            colors = r2dm.utils.render.colorize(z.clamp(0, 1), cm.viridis) / 255
         points = einops.rearrange(xyz, "B C H W -> B (H W) C")
         colors = 1 - einops.rearrange(colors, "B C H W -> B (H W) C")
-        bev = 1 - utils.render.render_point_clouds(
+        bev = 1 - r2dm.utils.render.render_point_clouds(
             points=points, colors=colors, R=R, t=t
         )
         bev = einops.rearrange(bev, "B C H W -> B H W C")
@@ -135,7 +135,7 @@ def main(args):
     img_in = einops.rearrange(to_img(x_in), "B C H W -> B (C H) W 1").cpu()
     bev_in = to_bev(x_in)
     img_out = einops.rearrange(to_img(x_out), "B C H W -> B (C H) W 1").cpu()
-    colors = utils.render.colorize(labels.float() / 19, cmap) / 255
+    colors = r2dm.utils.render.colorize(labels.float() / 19, cmap) / 255
     img_cls = einops.rearrange(colors, "B C H W -> B H W C").cpu()
     bev_out = to_bev(x_out, colors)
 

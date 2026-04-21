@@ -2,15 +2,15 @@ from pathlib import Path
 
 import torch
 
-from models.diffusion import (
+from r2dm.models.diffusion import (
     ContinuousTimeGaussianDiffusion,
     DiscreteTimeGaussianDiffusion,
     GaussianDiffusion,
 )
-from models.efficient_unet import EfficientUNet
-from models.refinenet import LiDARGenRefineNet
-from utils.lidar import LiDARUtility
-from utils.option import Config
+from r2dm.models.efficient_unet import EfficientUNet
+from r2dm.models.refinenet import LiDARGenRefineNet
+from r2dm.utils.lidar import LiDARUtility
+from r2dm.utils.option import Config
 
 
 def count_parameters(model: torch.nn.Module) -> int:
@@ -101,7 +101,7 @@ def setup_model(
                 f"resolution: {model.resolution}",
                 f"model: {model.__class__.__name__}",
                 f"ddpm: {ddpm.__class__.__name__}",
-                f'#steps:  {ckpt["global_step"]:,}',
+                f"#steps:  {ckpt['global_step']:,}",
                 f"#params: {count_parameters(ddpm):,}",
             ],
             sep="\n",

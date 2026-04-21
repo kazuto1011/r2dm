@@ -8,7 +8,7 @@ from rich import print
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm.auto import tqdm
 
-import utils.inference
+import r2dm.utils.inference
 
 warnings.filterwarnings("ignore", category=UserWarning)
 torch._dynamo.config.suppress_errors = True
@@ -20,7 +20,7 @@ def sample(args):
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
 
-    ddpm, lidar_utils, cfg = utils.inference.setup_model(args.ckpt)
+    ddpm, lidar_utils, cfg = r2dm.utils.inference.setup_model(args.ckpt)
 
     accelerator = Accelerator(
         mixed_precision=cfg.training.mixed_precision,
@@ -72,7 +72,7 @@ def sample(args):
                 batch_size=len(seeds),
                 num_steps=args.num_steps,
                 mode=args.mode,
-                rng=utils.inference.setup_rng(seeds.cpu().tolist(), device=device),
+                rng=r2dm.utils.inference.setup_rng(seeds.cpu().tolist(), device=device),
                 progress=False,
             ).clamp(-1, 1)
 
